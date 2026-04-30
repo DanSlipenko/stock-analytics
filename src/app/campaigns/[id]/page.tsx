@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Card, Button, Table, Tag, Statistic, Row, Col, Spin, Empty, Space, Input, Select,
-  InputNumber, message, Popconfirm, Divider, Segmented
+  InputNumber, message, Popconfirm, Divider, Segmented, Progress
 } from 'antd';
 import {
   PlusOutlined, ArrowLeftOutlined, BankOutlined, DeleteOutlined,
@@ -22,6 +22,18 @@ import StockChart, { TimeRange, TIME_RANGES } from '@/components/charts/StockCha
 import StockDetailDrawer from '@/components/charts/StockDetailDrawer';
 import PnLDisplay from '@/components/shared/PnLDisplay';
 import { calculateCampaignStats } from '@/lib/campaignStats';
+
+type LocationBalance = {
+  bought: number;
+  sold: number;
+  costBasis: number;
+  currentValue: number;
+  remaining: number;
+  stockCount: number;
+};
+
+const formatCurrency = (value: number) =>
+  `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default function CampaignDetailPage() {
   const router = useRouter();
@@ -119,6 +131,47 @@ export default function CampaignDetailPage() {
   // Calculate campaign stats
   const stats = useMemo(() => {
     return campaign ? calculateCampaignStats(campaign, quotes) : { invested: 0, currentValue: 0, realized: 0, pnl: 0, pnlPercent: 0 };
+  }, [campaign, quotes]);
+
+  const locationBalances = useMemo<Record<string, LocationBalance>>(() => {
+    if (!campaign) return {};
+
+    const balances: Record<string, LocationBalance> = {};
+
+    campaign.moneyLocations.forEach((location) => {
+      if (!location._id) return;
+      balances[location._id] = {
+        bought: 0,
+        sold: 0,
+        costBasis: 0,
+        currentValue: 0,
+        remaining: location.allocatedAmount,
+        stockCount: 0,
+      };
+    });
+
+    campaign.stocks.forEach((stock) => {
+      if (!stock.locationId || !balances[stock.locationId]) return;
+
+      const bought = stock.shares * stock.buyPrice;
+      const sold = stock.transactions.reduce((sum, transaction) => sum + transaction.shares * transaction.price, 0);
+      const soldShares = stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
+      const remainingShares = stock.shares - soldShares;
+      const currentPrice = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
+
+      balances[stock.locationId].bought += bought;
+      balances[stock.locationId].sold += sold;
+      balances[stock.locationId].costBasis += remainingShares * stock.buyPrice;
+      balances[stock.locationId].currentValue += remainingShares * currentPrice;
+      balances[stock.locationId].stockCount += remainingShares > 0 ? 1 : 0;
+    });
+
+    campaign.moneyLocations.forEach((location) => {
+      if (!location._id || !balances[location._id]) return;
+      balances[location._id].remaining = location.allocatedAmount - balances[location._id].bought + balances[location._id].sold;
+    });
+
+    return balances;
   }, [campaign, quotes]);
 
   if (loading) {
@@ -223,11 +276,28 @@ export default function CampaignDetailPage() {
       align: 'right' as const,
     },
     {
-      title: 'Location',
+      title: 'Funding',
       key: 'location',
       render: (_: unknown, record: CampaignStock) => {
         const loc = campaign.moneyLocations.find((l) => l._id === record.locationId);
-        return loc ? <Tag>{loc.name}</Tag> : <span style={{ color: '#64748b' }}>—</span>;
+        if (!loc) return <span style={{ color: '#64748b' }}>—</span>;
+
+        const balance = loc._id ? locationBalances[loc._id] : undefined;
+        const purchaseAmount = record.shares * record.buyPrice;
+
+        return (
+          <div>
+            <Tag>{loc.name}</Tag>
+            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+              {formatCurrency(purchaseAmount)} bought
+            </div>
+            {balance && (
+              <div style={{ fontSize: 12, color: balance.remaining >= 0 ? '#00d4aa' : '#ef4444' }}>
+                {formatCurrency(balance.remaining)} left
+              </div>
+            )}
+          </div>
+        );
       },
     },
     {
@@ -411,17 +481,57 @@ export default function CampaignDetailPage() {
           />
         ) : (
           <Row gutter={16}>
-            {campaign.moneyLocations.map((loc) => (
-              <Col key={loc._id} xs={12} md={8} lg={6}>
-                <Card size="small" style={{ background: '#0f1629', border: '1px solid #1e2a3a', marginBottom: 8 }}>
-                  <div style={{ fontWeight: 600, color: '#e2e8f0', marginBottom: 4 }}>{loc.name}</div>
-                  <Tag color="default" style={{ marginBottom: 4 }}>{loc.type}</Tag>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#00d4aa' }}>
-                    ${loc.allocatedAmount.toLocaleString()}
-                  </div>
-                </Card>
-              </Col>
-            ))}
+            {campaign.moneyLocations.map((loc) => {
+              const balance = loc._id ? locationBalances[loc._id] : undefined;
+              const used = balance ? loc.allocatedAmount - balance.remaining : 0;
+              const usedPercent = loc.allocatedAmount > 0
+                ? Math.min(Math.max((used / loc.allocatedAmount) * 100, 0), 100)
+                : 0;
+
+              return (
+                <Col key={loc._id} xs={24} md={12} lg={8}>
+                  <Card size="small" style={{ background: '#0f1629', border: '1px solid #1e2a3a', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 600, color: '#e2e8f0', marginBottom: 4 }}>{loc.name}</div>
+                        <Tag color="default">{loc.type}</Tag>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                          Left to buy
+                        </div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: (balance?.remaining ?? loc.allocatedAmount) >= 0 ? '#00d4aa' : '#ef4444' }}>
+                          {formatCurrency(balance?.remaining ?? loc.allocatedAmount)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Progress
+                      percent={usedPercent}
+                      showInfo={false}
+                      strokeColor={used > loc.allocatedAmount ? '#ef4444' : '#00d4aa'}
+                      trailColor="#1e2a3a"
+                      style={{ marginBottom: 8 }}
+                    />
+
+                    <Row gutter={12}>
+                      <Col span={8}>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>Allocated</div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(loc.allocatedAmount)}</div>
+                      </Col>
+                      <Col span={8}>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>Bought</div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(balance?.bought ?? 0)}</div>
+                      </Col>
+                      <Col span={8}>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>In Stocks</div>
+                        <div style={{ color: '#e2e8f0', fontWeight: 600 }}>{formatCurrency(balance?.currentValue ?? 0)}</div>
+                      </Col>
+                    </Row>
+                  </Card>
+                </Col>
+              );
+            })}
           </Row>
         )}
       </Card>

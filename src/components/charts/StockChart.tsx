@@ -4,14 +4,28 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Spin } from 'antd';
 import { StockCandle } from '@/types';
 
+type ChartTime = import('lightweight-charts').Time;
+type ChartMarker = import('lightweight-charts').SeriesMarker<ChartTime>;
+
 interface StockChartProps {
   symbol: string;
   height?: number;
   hideToolbar?: boolean;
   activeRangeOverride?: TimeRange;
   chartType?: 'candlestick' | 'area';
-  markers?: import('lightweight-charts').SeriesMarker<import('lightweight-charts').Time>[];
+  markers?: ChartMarker[];
 }
+
+type TradeOverlayMarker = {
+  key: string;
+  x: number;
+  y: number;
+  labelY: number;
+  side: 'buy' | 'sell';
+  label: string;
+  price: number;
+  color: string;
+};
 
 export type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
 
@@ -24,14 +38,73 @@ export const TIME_RANGES: { key: TimeRange; label: string; seconds: number }[] =
   { key: 'ALL', label: 'ALL', seconds: 5 * 365 * 86400 },
 ];
 
+const parseTradeMarker = (marker: ChartMarker) => {
+  const match = marker.text?.match(/^(Buy|Sell)\s*@\s*\$?([\d,.]+)/i);
+  if (!match) return null;
+
+  const price = Number(match[2].replace(/,/g, ''));
+  if (!Number.isFinite(price)) return null;
+
+  const side = match[1].toLowerCase() as 'buy' | 'sell';
+  return {
+    side,
+    price,
+    label: `${side.toUpperCase()} $${price.toFixed(2)}`,
+    color: side === 'buy' ? '#22c55e' : '#ef4444',
+  };
+};
+
+const normalizeMarkers = (markers: ChartMarker[] | undefined, validTimes: Set<string>): ChartMarker[] => {
+  if (!markers?.length || validTimes.size === 0) return [];
+
+  return markers
+    .map((marker) => {
+      if (validTimes.has(String(marker.time))) return marker;
+
+      let closest = Array.from(validTimes)[0];
+      let minDiff = Infinity;
+      const markerTime = new Date(String(marker.time)).getTime();
+
+      for (const validTime of validTimes) {
+        const diff = Math.abs(new Date(validTime).getTime() - markerTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = validTime;
+        }
+      }
+
+      return { ...marker, time: closest as ChartTime };
+    })
+    .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+};
+
+const getDisplayMarkers = (markers: ChartMarker[] | undefined, validTimes: Set<string>): ChartMarker[] =>
+  normalizeMarkers(markers, validTimes).map((marker) => {
+    const tradeMarker = parseTradeMarker(marker);
+    if (!tradeMarker) return marker;
+
+    return {
+      ...marker,
+      position: 'atPriceMiddle',
+      price: tradeMarker.price,
+      color: tradeMarker.color,
+      shape: 'circle',
+      size: 0.65,
+      text: undefined,
+    } as ChartMarker;
+  });
+
 export default function StockChart({ symbol, height = 400, hideToolbar = false, activeRangeOverride, chartType = 'candlestick', markers }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof import('lightweight-charts').createChart> | null>(null);
   const seriesRef = useRef<import('lightweight-charts').ISeriesApi<'Candlestick'> | import('lightweight-charts').ISeriesApi<'Area'> | null>(null);
   const markersPluginRef = useRef<any>(null);
   const dataTimesRef = useRef<Set<string>>(new Set());
+  const markersRef = useRef(markers);
+  const cleanupChartListenersRef = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
   const [internalRange, setInternalRange] = useState<TimeRange>('1Y');
+  const [tradeOverlays, setTradeOverlays] = useState<TradeOverlayMarker[]>([]);
   
   // Overlay state
   const [tooltip, setTooltip] = useState<{
@@ -57,6 +130,40 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
   const dragStartRef = useRef<{ price: number; time: any } | null>(null);
 
   const activeRange = activeRangeOverride || internalRange;
+  markersRef.current = markers;
+
+  const updateTradeOverlays = useCallback(() => {
+    if (!chartRef.current || !seriesRef.current || dataTimesRef.current.size === 0) {
+      setTradeOverlays([]);
+      return;
+    }
+
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    const normalizedMarkers = normalizeMarkers(markersRef.current, dataTimesRef.current);
+
+    const nextTradeOverlays = normalizedMarkers.flatMap((marker, index) => {
+      const tradeMarker = parseTradeMarker(marker);
+      if (!tradeMarker) return [];
+
+      const x = chart.timeScale().timeToCoordinate(marker.time);
+      const y = series.priceToCoordinate(tradeMarker.price);
+      if (x === null || y === null) return [];
+
+      return [{
+        key: `${String(marker.time)}-${tradeMarker.side}-${index}`,
+        x,
+        y,
+        labelY: Math.min(Math.max(y, 24), height - 24),
+        side: tradeMarker.side,
+        label: tradeMarker.label,
+        price: tradeMarker.price,
+        color: tradeMarker.color,
+      }];
+    });
+
+    setTradeOverlays(nextTradeOverlays);
+  }, [height]);
 
   const loadChart = useCallback(async (range: TimeRange) => {
     if (!containerRef.current) return;
@@ -79,9 +186,12 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
       const { createChart, ColorType, CrosshairMode, CandlestickSeries, AreaSeries, HistogramSeries, createSeriesMarkers } = await import('lightweight-charts');
 
       // Dispose old chart
+      cleanupChartListenersRef.current?.();
+      cleanupChartListenersRef.current = null;
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
+        setTradeOverlays([]);
       }
 
       const chart = createChart(containerRef.current, {
@@ -118,6 +228,8 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
       chartRef.current = chart;
 
       const candles: StockCandle[] = data.candles || [];
+
+      let unsubscribeVisibleRange: (() => void) | null = null;
 
       if (candles.length > 0) {
         let mainSeries;
@@ -166,24 +278,10 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
         seriesRef.current = mainSeries as any;
         dataTimesRef.current = validTimes;
 
-        // Apply markers immediately if they exist
-        if (markers && markers.length > 0) {
+        // Apply compact chart markers immediately if they exist.
+        const validMarkers = getDisplayMarkers(markersRef.current, validTimes);
+        if (validMarkers.length > 0) {
           try {
-            const validMarkers = markers.map(m => {
-              if (validTimes.has(String(m.time))) return m;
-              let closest = Array.from(validTimes)[0];
-              let minDiff = Infinity;
-              const mTime = new Date(String(m.time)).getTime();
-              for (const vt of validTimes) {
-                const diff = Math.abs(new Date(vt).getTime() - mTime);
-                if (diff < minDiff) {
-                  minDiff = diff;
-                  closest = vt;
-                }
-              }
-              return { ...m, time: closest as import('lightweight-charts').Time };
-            }).sort((a, b) => String(a.time).localeCompare(String(b.time)));
-
             const markersPlugin = createSeriesMarkers(mainSeries as any, validMarkers);
             markersPluginRef.current = markersPlugin;
           } catch (e) {
@@ -246,65 +344,60 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
           });
         });
 
+        const handleVisibleRangeChange = () => updateTradeOverlays();
+        chart.timeScale().subscribeVisibleTimeRangeChange(handleVisibleRangeChange);
+        unsubscribeVisibleRange = () => chart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
         chart.timeScale().fitContent();
+        requestAnimationFrame(updateTradeOverlays);
       }
 
       // Handle resize
       const handleResize = () => {
         if (containerRef.current && chartRef.current) {
           chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
+          requestAnimationFrame(updateTradeOverlays);
         }
       };
 
       window.addEventListener('resize', handleResize);
+      cleanupChartListenersRef.current = () => {
+        window.removeEventListener('resize', handleResize);
+        unsubscribeVisibleRange?.();
+      };
 
       setLoading(false);
-
-      return () => {
-        window.removeEventListener('resize', handleResize);
-      };
     } catch (error) {
       console.error('Chart load error:', error);
       setLoading(false);
     }
-  }, [symbol, height, chartType]);
+  }, [symbol, height, chartType, updateTradeOverlays]);
 
   useEffect(() => {
     loadChart(activeRange);
 
     return () => {
+      cleanupChartListenersRef.current?.();
+      cleanupChartListenersRef.current = null;
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
         seriesRef.current = null;
         markersPluginRef.current = null;
+        dataTimesRef.current = new Set();
+        setTradeOverlays([]);
       }
     };
   }, [activeRange, loadChart]);
 
   // Update markers without recreating the entire chart
   useEffect(() => {
-    if (seriesRef.current && markers && dataTimesRef.current.size > 0) {
+    if (seriesRef.current && dataTimesRef.current.size > 0) {
       try {
-        const validTimes = dataTimesRef.current;
-        const validMarkers = markers.map(m => {
-          if (validTimes.has(String(m.time))) return m;
-          let closest = Array.from(validTimes)[0];
-          let minDiff = Infinity;
-          const mTime = new Date(String(m.time)).getTime();
-          for (const vt of validTimes) {
-            const diff = Math.abs(new Date(vt).getTime() - mTime);
-            if (diff < minDiff) {
-              minDiff = diff;
-              closest = vt;
-            }
-          }
-          return { ...m, time: closest as import('lightweight-charts').Time };
-        }).sort((a, b) => String(a.time).localeCompare(String(b.time)));
+        const validMarkers = getDisplayMarkers(markers, dataTimesRef.current);
 
         if (markersPluginRef.current) {
           markersPluginRef.current.setMarkers(validMarkers);
-        } else {
+        } else if (validMarkers.length > 0) {
           // Fallback if plugin wasn't created yet
           import('lightweight-charts').then(({ createSeriesMarkers }) => {
             if (seriesRef.current) {
@@ -312,11 +405,14 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
             }
           });
         }
+        updateTradeOverlays();
       } catch (e) {
         console.error('[StockChart] Markers effect error:', e);
       }
+    } else {
+      setTradeOverlays([]);
     }
-  }, [markers]);
+  }, [markers, updateTradeOverlays]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!tooltip.show) return;
@@ -359,6 +455,74 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
           </div>
         )}
         <div ref={containerRef} />
+        {tradeOverlays.map((marker) => {
+          const labelLeft = marker.x < 120 ? 12 : undefined;
+          const labelRight = marker.x >= 120 ? 12 : undefined;
+
+          return (
+            <div
+              key={marker.key}
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                left: marker.x,
+                zIndex: 4,
+                pointerEvents: 'none',
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  borderLeft: `2px dashed ${marker.color}cc`,
+                  boxShadow: `0 0 12px ${marker.color}55`,
+                  transform: 'translateX(-1px)',
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: marker.y,
+                  left: 0,
+                  width: 12,
+                  height: 12,
+                  borderRadius: '50%',
+                  background: marker.color,
+                  border: '2px solid #111827',
+                  boxShadow: `0 0 0 3px ${marker.color}33, 0 0 14px ${marker.color}99`,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: marker.labelY,
+                  left: labelLeft,
+                  right: labelRight,
+                  transform: 'translateY(-50%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '5px 8px',
+                  borderRadius: 999,
+                  background: 'rgba(17, 24, 39, 0.92)',
+                  border: `1px solid ${marker.color}99`,
+                  color: marker.color,
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: 0.4,
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 6px 18px rgba(0, 0, 0, 0.45)',
+                }}
+              >
+                <span>{marker.side === 'buy' ? 'B' : 'S'}</span>
+                <span>{marker.label}</span>
+              </div>
+            </div>
+          );
+        })}
         
         {/* Legend / Tooltip Overlay */}
         {tooltip.show && (

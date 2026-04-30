@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
-import { Modal, Form, Input, InputNumber, DatePicker, Select, Space, Button, message } from "antd";
+import { Modal, Form, Input, InputNumber, DatePicker, Select, Space, Button, message, Alert } from "antd";
 import SymbolSearch from "../shared/SymbolSearch";
 import { Campaign, CampaignStock } from "@/types";
 import { useStore } from "@/context/StoreContext";
@@ -13,6 +13,9 @@ interface AddStockModalProps {
   stock?: CampaignStock | null;
 }
 
+const formatCurrency = (value: number) =>
+  `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 export default function AddStockModal({ open, onClose, campaign, stock }: AddStockModalProps) {
   const [form] = Form.useForm();
   const { dispatch } = useStore();
@@ -20,12 +23,40 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const isAddingToExistingStock = Boolean(stock);
 
+  const locationBalances = useMemo(() => {
+    const balances: Record<string, number> = {};
+
+    campaign.moneyLocations.forEach((loc) => {
+      if (loc._id) balances[loc._id] = loc.allocatedAmount;
+    });
+
+    campaign.stocks.forEach((campaignStock) => {
+      if (!campaignStock.locationId || balances[campaignStock.locationId] === undefined) return;
+
+      const bought = campaignStock.shares * campaignStock.buyPrice;
+      const sold = campaignStock.transactions.reduce((sum, transaction) => sum + transaction.shares * transaction.price, 0);
+
+      balances[campaignStock.locationId] -= bought - sold;
+    });
+
+    return balances;
+  }, [campaign.moneyLocations, campaign.stocks]);
+
   const locationOptions = useMemo(() => {
     return campaign.moneyLocations.map((loc) => ({
-      label: `${loc.name} ($${loc.allocatedAmount.toLocaleString()})`,
+      label: `${loc.name} (${formatCurrency(loc._id ? locationBalances[loc._id] ?? loc.allocatedAmount : loc.allocatedAmount)} left)`,
       value: loc._id,
     }));
-  }, [campaign.moneyLocations]);
+  }, [campaign.moneyLocations, locationBalances]);
+
+  const shares = Form.useWatch("shares", form) || 0;
+  const buyPrice = Form.useWatch("buyPrice", form) || 0;
+  const selectedLocationId = Form.useWatch("locationId", form);
+  const selectedLocation = campaign.moneyLocations.find((loc) => loc._id === selectedLocationId);
+  const selectedLocationRemaining = selectedLocationId ? locationBalances[selectedLocationId] : undefined;
+  const purchaseTotal = Number(shares) * Number(buyPrice);
+  const projectedRemaining =
+    selectedLocationRemaining === undefined ? undefined : selectedLocationRemaining - purchaseTotal;
 
   useEffect(() => {
     if (open && stock) {
@@ -123,6 +154,16 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
           <Form.Item name="locationId" label="Money Location">
             <Select placeholder="Select where this stock is held" options={locationOptions} size="large" allowClear />
           </Form.Item>
+        )}
+
+        {selectedLocation && projectedRemaining !== undefined && purchaseTotal > 0 && (
+          <Alert
+            type={projectedRemaining >= 0 ? "info" : "warning"}
+            showIcon
+            message={`${formatCurrency(purchaseTotal)} from ${selectedLocation.name}`}
+            description={`${formatCurrency(projectedRemaining)} left after this purchase`}
+            style={{ marginBottom: 16 }}
+          />
         )}
 
         <Space style={{ width: "100%", justifyContent: "flex-end", marginTop: 8 }}>
