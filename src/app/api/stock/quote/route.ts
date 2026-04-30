@@ -2,6 +2,84 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
 
+type YahooQuotePoint = {
+  open?: Array<number | null>;
+  high?: Array<number | null>;
+  low?: Array<number | null>;
+  close?: Array<number | null>;
+};
+
+function unavailableQuote(status = 404) {
+  return NextResponse.json({ error: 'Quote unavailable' }, { status });
+}
+
+function isValidPrice(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function findLastValidPriceIndex(values?: Array<number | null>) {
+  if (!values) return -1;
+
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    if (isValidPrice(values[index])) return index;
+  }
+
+  return -1;
+}
+
+async function fetchYahooQuote(symbol: string) {
+  const res = await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`,
+    {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      next: { revalidate: 30 },
+    }
+  );
+
+  if (!res.ok) {
+    return null;
+  }
+
+  const data = await res.json();
+  if (data.chart?.error) {
+    return null;
+  }
+
+  const result = data.chart?.result?.[0];
+  const meta = result?.meta;
+  const quote: YahooQuotePoint | undefined = result?.indicators?.quote?.[0];
+  const timestamps: number[] | undefined = result?.timestamp;
+
+  if (!meta || !quote || !Array.isArray(timestamps)) {
+    return null;
+  }
+
+  const lastIndex = findLastValidPriceIndex(quote.close);
+  const currentPrice = isValidPrice(meta.regularMarketPrice) ? meta.regularMarketPrice : quote.close?.[lastIndex];
+  const previousClose = isValidPrice(meta.chartPreviousClose)
+    ? meta.chartPreviousClose
+    : isValidPrice(meta.previousClose)
+      ? meta.previousClose
+      : quote.close?.[lastIndex - 1];
+
+  if (!isValidPrice(currentPrice) || !isValidPrice(previousClose)) {
+    return null;
+  }
+
+  const change = currentPrice - previousClose;
+
+  return {
+    currentPrice,
+    change,
+    percentChange: previousClose === 0 ? 0 : (change / previousClose) * 100,
+    high: isValidPrice(quote.high?.[lastIndex]) ? quote.high[lastIndex] : currentPrice,
+    low: isValidPrice(quote.low?.[lastIndex]) ? quote.low[lastIndex] : currentPrice,
+    open: isValidPrice(quote.open?.[lastIndex]) ? quote.open[lastIndex] : currentPrice,
+    previousClose,
+    timestamp: (timestamps[lastIndex] ?? Math.floor(Date.now() / 1000)) * 1000,
+  };
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get('symbol');
@@ -54,13 +132,23 @@ export async function GET(request: NextRequest) {
     );
 
     if (!res.ok) {
-      throw new Error(`Finnhub API error: ${res.status}`);
+      const yahooQuote = await fetchYahooQuote(symbol);
+      if (yahooQuote) {
+        return NextResponse.json(yahooQuote);
+      }
+
+      return unavailableQuote(res.status === 429 ? 429 : 502);
     }
 
     const data = await res.json();
 
     if (!Number.isFinite(data.c) || data.c <= 0 || !data.t) {
-      return NextResponse.json({ error: 'No quote data' }, { status: 404 });
+      const yahooQuote = await fetchYahooQuote(symbol);
+      if (yahooQuote) {
+        return NextResponse.json(yahooQuote);
+      }
+
+      return unavailableQuote();
     }
 
     return NextResponse.json({
@@ -75,6 +163,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Quote fetch error:', error);
-    return NextResponse.json({ error: 'Failed to fetch quote' }, { status: 500 });
+    return unavailableQuote(502);
   }
 }
