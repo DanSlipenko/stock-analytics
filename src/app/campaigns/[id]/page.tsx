@@ -186,6 +186,19 @@ export default function CampaignDetailPage() {
       align: 'right' as const,
     },
     {
+      title: 'In Stocks',
+      key: 'currentValue',
+      render: (_: unknown, record: CampaignStock) => {
+        const sold = record.transactions.reduce((sum, t) => sum + t.shares, 0);
+        const remaining = record.shares - sold;
+        const currentPrice = quotes[record.symbol]?.currentPrice ?? record.buyPrice;
+        const currentValue = remaining * currentPrice;
+
+        return `$${currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      },
+      align: 'right' as const,
+    },
+    {
       title: 'Unrealized P&L',
       key: 'unrealized',
       render: (_: unknown, record: CampaignStock) => {
@@ -277,7 +290,7 @@ export default function CampaignDetailPage() {
         </Card>
         <Card className="stat-card" bordered={false}>
           <Statistic
-            title={<span style={{ color: '#64748b' }}>Current Value</span>}
+            title={<span style={{ color: '#64748b' }}>Total in Stocks</span>}
             value={stats.currentValue}
             precision={2}
             valueStyle={{ color: '#e2e8f0' }}

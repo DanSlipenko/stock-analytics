@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { Card, Button, Row, Col, Tag, Statistic, Empty, Spin, Popconfirm, message } from "antd";
-import { PlusOutlined, DeleteOutlined, EditOutlined, FolderOutlined, RightOutlined } from "@ant-design/icons";
+import { PlusOutlined, DeleteOutlined, EditOutlined, FolderOutlined, RightOutlined, FundOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
@@ -25,6 +25,19 @@ export default function CampaignsPage() {
   }, [state.campaigns]);
 
   const { quotes } = useStockQuotes(allSymbols);
+
+  const portfolioStats = useMemo(() => {
+    return state.campaigns.reduce(
+      (totals, campaign) => {
+        const stats = calculateCampaignStats(campaign, quotes);
+
+        return {
+          totalCurrentValue: totals.totalCurrentValue + stats.currentValue,
+        };
+      },
+      { totalCurrentValue: 0 }
+    );
+  }, [state.campaigns, quotes]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -63,78 +76,102 @@ export default function CampaignsPage() {
             Create Campaign
           </Button>
         </div>
-      : <Row gutter={[20, 20]}>
-          {state.campaigns.map((campaign) => {
-            const stats = calculateCampaignStats(campaign, quotes);
+      : <>
+          <div className="stats-grid animate-in">
+            <Card className="stat-card" bordered={false}>
+              <Statistic
+                title={<span style={{ color: "#64748b" }}>Total in Stocks</span>}
+                value={portfolioStats.totalCurrentValue}
+                prefix={<FundOutlined style={{ color: "#00d4aa" }} />}
+                precision={2}
+                valueStyle={{ color: "#e2e8f0" }}
+                formatter={(value) => `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+              />
+            </Card>
+          </div>
 
-            return (
-              <Col xs={24} md={12} lg={8} key={campaign._id}>
-                <Card
-                  className="campaign-card"
-                  hoverable
-                  onClick={() => router.push(`/campaigns/${campaign._id}`)}
-                  actions={[
-                    <Button
-                      key="edit"
-                      type="text"
-                      icon={<EditOutlined />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingCampaign(campaign);
-                      }}
-                      size="small">
-                      Edit
-                    </Button>,
-                    <Popconfirm
-                      key="delete"
-                      title="Delete this campaign?"
-                      description="All stocks and transactions will be removed."
-                      onConfirm={(e) => {
-                        e?.stopPropagation();
-                        handleDelete(campaign._id!);
-                      }}
-                      onCancel={(e) => e?.stopPropagation()}
-                      okText="Delete"
-                      okType="danger">
-                      <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small">
-                        Delete
-                      </Button>
-                    </Popconfirm>,
-                    <Button key="view" type="text" icon={<RightOutlined />} size="small">
-                      View
-                    </Button>,
-                  ]}>
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", marginBottom: 4 }}>{campaign.name}</div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <Tag color="blue">{campaign.stocks.length} stocks</Tag>
-                      <Tag color="default">{campaign.moneyLocations.length} locations</Tag>
-                      {campaign.startDate && <Tag color="purple">Started {new Date(campaign.startDate).toLocaleDateString()}</Tag>}
-                    </div>
-                  </div>
+          <Row gutter={[20, 20]}>
+            {state.campaigns.map((campaign) => {
+              const stats = calculateCampaignStats(campaign, quotes);
 
-                  <Row gutter={8}>
-                    <Col span={12}>
-                      <Statistic
-                        title={<span style={{ color: "#64748b", fontSize: 11 }}>Invested</span>}
-                        value={stats.invested}
-                        prefix="$"
-                        precision={0}
-                        valueStyle={{ fontSize: 16, color: "#e2e8f0" }}
-                      />
-                    </Col>
-                    <Col span={12}>
-                      <div>
-                        <div style={{ color: "#64748b", fontSize: 11, marginBottom: 8 }}>P&L</div>
-                        <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="small" />
+              return (
+                <Col xs={24} md={12} lg={8} key={campaign._id}>
+                  <Card
+                    className="campaign-card"
+                    hoverable
+                    onClick={() => router.push(`/campaigns/${campaign._id}`)}
+                    actions={[
+                      <Button
+                        key="edit"
+                        type="text"
+                        icon={<EditOutlined />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingCampaign(campaign);
+                        }}
+                        size="small">
+                        Edit
+                      </Button>,
+                      <Popconfirm
+                        key="delete"
+                        title="Delete this campaign?"
+                        description="All stocks and transactions will be removed."
+                        onConfirm={(e) => {
+                          e?.stopPropagation();
+                          handleDelete(campaign._id!);
+                        }}
+                        onCancel={(e) => e?.stopPropagation()}
+                        okText="Delete"
+                        okType="danger">
+                        <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small">
+                          Delete
+                        </Button>
+                      </Popconfirm>,
+                      <Button key="view" type="text" icon={<RightOutlined />} size="small">
+                        View
+                      </Button>,
+                    ]}>
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", marginBottom: 4 }}>{campaign.name}</div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <Tag color="blue">{campaign.stocks.length} stocks</Tag>
+                        <Tag color="default">{campaign.moneyLocations.length} locations</Tag>
+                        {campaign.startDate && <Tag color="purple">Started {new Date(campaign.startDate).toLocaleDateString()}</Tag>}
                       </div>
-                    </Col>
-                  </Row>
-                </Card>
-              </Col>
-            );
-          })}
-        </Row>
+                    </div>
+
+                    <Row gutter={8}>
+                      <Col span={8}>
+                        <Statistic
+                          title={<span style={{ color: "#64748b", fontSize: 11 }}>Invested</span>}
+                          value={stats.invested}
+                          prefix="$"
+                          precision={0}
+                          valueStyle={{ fontSize: 16, color: "#e2e8f0" }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <Statistic
+                          title={<span style={{ color: "#64748b", fontSize: 11 }}>In Stocks</span>}
+                          value={stats.currentValue}
+                          prefix="$"
+                          precision={0}
+                          valueStyle={{ fontSize: 16, color: "#e2e8f0" }}
+                        />
+                      </Col>
+                      <Col span={8}>
+                        <div>
+                          <div style={{ color: "#64748b", fontSize: 11, marginBottom: 8 }}>P&L</div>
+                          <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="small" />
+                        </div>
+                      </Col>
+                    </Row>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Row>
+        </>
       }
 
       <CreateCampaignModal open={createModal} onClose={() => setCreateModal(false)} />
