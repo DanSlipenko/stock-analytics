@@ -348,6 +348,7 @@ export default function CampaignDetailPage() {
               type="text"
               size="small"
               icon={starred ? <StarFilled /> : <StarOutlined />}
+              className="stock-star-btn"
               style={{ color: starred ? '#f59e0b' : '#64748b' }}
               title={starred ? 'Unstar position' : 'Star position'}
               onClick={(e) => {
@@ -541,21 +542,173 @@ export default function CampaignDetailPage() {
             ]}
             pagination={false}
             size="small"
+            scroll={{ x: 640 }}
           />
         )}
       </div>
     ),
   };
 
+  const renderMobileStockCards = (stocks: CampaignStock[]) => (
+    <div className="mobile-stock-list">
+      {stocks.map((stock) => {
+        const soldOut = isSoldOut(stock);
+        const starred = Boolean(stock.isStarred);
+        const sold = getSoldShares(stock);
+        const remaining = getRemainingShares(stock);
+        const currentPrice = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
+        const currentValue = remaining * currentPrice;
+        const unrealized = remaining * (currentPrice - stock.buyPrice);
+        const unrealizedPct = ((currentPrice - stock.buyPrice) / stock.buyPrice) * 100;
+        const realized = stock.transactions.reduce(
+          (sum, transaction) => sum + transaction.shares * (transaction.price - stock.buyPrice),
+          0
+        );
+        const loc = campaign.moneyLocations.find((location) => location._id === stock.locationId);
+        const balance = loc?._id ? locationBalances[loc._id] : undefined;
+        const notifications = stock.notifications || [];
+
+        return (
+          <div
+            key={stock._id}
+            className={`mobile-stock-card ${soldOut ? 'mobile-stock-card-sold' : ''} ${starred ? 'mobile-stock-card-starred' : ''}`}
+          >
+            <div className="mobile-stock-card-header">
+              <div className="mobile-stock-title">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={starred ? <StarFilled /> : <StarOutlined />}
+                  className="stock-star-btn"
+                  style={{ color: starred ? '#f59e0b' : '#64748b' }}
+                  title={starred ? 'Unstar position' : 'Star position'}
+                  onClick={() => {
+                    if (stock._id) toggleStockStarred(stock._id);
+                  }}
+                />
+                <Button
+                  type="link"
+                  className="mobile-stock-symbol"
+                  style={{ color: soldOut ? '#fca5a5' : starred ? '#fbbf24' : undefined }}
+                  onClick={() => setDrawerSymbol(stock.symbol)}
+                >
+                  {stock.symbol} <LineChartOutlined style={{ fontSize: 11 }} />
+                </Button>
+              </div>
+              <div className="mobile-stock-tags">
+                {starred && <Tag color="gold">Starred</Tag>}
+                {soldOut && <Tag color="red">Sold</Tag>}
+                {notifications.length > 0 && <Tag color="gold">{notifications.length} alert{notifications.length === 1 ? '' : 's'}</Tag>}
+              </div>
+            </div>
+
+            <div className="mobile-stock-metrics">
+              <div>
+                <span>Shares</span>
+                <strong>
+                  {remaining.toLocaleString()}
+                  {sold > 0 && <small> / {stock.shares.toLocaleString()}</small>}
+                </strong>
+              </div>
+              <div>
+                <span>Buy Price</span>
+                <strong>{formatCurrency(stock.buyPrice)}</strong>
+              </div>
+              <div>
+                <span>Current</span>
+                <strong>{formatCurrency(currentPrice)}</strong>
+              </div>
+              <div>
+                <span>In Stocks</span>
+                <strong>{formatCurrency(currentValue)}</strong>
+              </div>
+              <div>
+                <span>Unrealized</span>
+                {remaining <= 0 ? <strong className="loss">Sold</strong> : <PnLDisplay value={unrealized} percentage={unrealizedPct} size="small" />}
+              </div>
+              <div>
+                <span>Realized</span>
+                {realized !== 0 ? <PnLDisplay value={realized} size="small" /> : <strong className="neutral">-</strong>}
+              </div>
+            </div>
+
+            {loc && (
+              <div className="mobile-stock-funding">
+                <Tag>{loc.name}</Tag>
+                <span>{formatCurrency(stock.shares * stock.buyPrice)} bought</span>
+                {balance && (
+                  <strong style={{ color: balance.remaining >= 0 ? '#00d4aa' : '#ef4444' }}>
+                    {formatCurrency(balance.remaining)} left
+                  </strong>
+                )}
+              </div>
+            )}
+
+            {stock.transactions.length > 0 && (
+              <div className="mobile-transaction-list">
+                <div className="mobile-transaction-title">Transaction History</div>
+                {stock.transactions.map((transaction, index) => (
+                  <div key={`${transaction.date}-${index}`} className="mobile-transaction-row">
+                    <div>
+                      <strong>{new Date(transaction.date).toLocaleDateString()}</strong>
+                      <span>{transaction.shares.toLocaleString()} shares at {formatCurrency(transaction.price)}</span>
+                    </div>
+                    <Button
+                      size="small"
+                      type="text"
+                      onClick={() => setEditTransaction({ stock, transaction: { ...transaction, key: index } })}
+                    >
+                      Edit
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mobile-stock-actions">
+              <Button
+                size="small"
+                icon={<BellOutlined />}
+                type={notifications.length > 0 ? 'primary' : 'default'}
+                onClick={() => {
+                  setNotificationStock(stock);
+                  notificationForm.setFieldsValue({ thresholdType: 'price', direction: 'above' });
+                }}
+              >
+                Alerts
+              </Button>
+              {!soldOut && (
+                <Button size="small" onClick={() => setSellStock(stock)}>
+                  Sell
+                </Button>
+              )}
+              <Button size="small" onClick={() => setBuyMoreStock(stock)}>
+                Buy More
+              </Button>
+              <Button size="small" onClick={() => setEditStock(stock)}>
+                Edit
+              </Button>
+              <Popconfirm title="Remove this stock?" onConfirm={() => deleteStock(stock._id!)}>
+                <Button size="small" danger icon={<DeleteOutlined />}>
+                  Remove
+                </Button>
+              </Popconfirm>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="page-container">
       {/* Header */}
       <div className="page-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="campaign-page-heading">
           <Button icon={<ArrowLeftOutlined />} onClick={() => router.push('/campaigns')} type="text" />
           <h1>{campaign.name}</h1>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddStockModal(true)}>
+        <Button type="primary" icon={<PlusOutlined />} className="page-primary-action" onClick={() => setAddStockModal(true)}>
           Add Stock
         </Button>
       </div>
@@ -605,6 +758,7 @@ export default function CampaignDetailPage() {
 
       {/* Money Locations */}
       <Card
+        className="campaign-detail-card money-locations-card"
         title={
           <span style={{ color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8 }}>
             <BankOutlined /> Money Locations
@@ -614,7 +768,7 @@ export default function CampaignDetailPage() {
         style={{ marginBottom: 24 }}
         extra={
           editingLocations ? (
-            <Space>
+            <Space className="money-location-edit-actions">
               <Button onClick={() => { setLocalLocations(campaign.moneyLocations); setEditingLocations(false); }}>Cancel</Button>
               <Button type="primary" onClick={saveLocations}>Save</Button>
             </Space>
@@ -628,6 +782,7 @@ export default function CampaignDetailPage() {
             {localLocations.map((loc, i) => (
               <div
                 key={loc._id || i}
+                className="money-location-edit-row"
                 style={{
                   display: 'flex', gap: 8, marginBottom: 10, padding: 10,
                   background: '#0f1629', borderRadius: 8, border: '1px solid #1e2a3a',
@@ -641,7 +796,7 @@ export default function CampaignDetailPage() {
                     setLocalLocations(updated);
                   }}
                   placeholder="Name"
-                  style={{ flex: 2 }}
+                  style={{ flex: 2, minWidth: 0 }}
                 />
                 <Select
                   value={loc.type}
@@ -650,7 +805,7 @@ export default function CampaignDetailPage() {
                     updated[i] = { ...updated[i], type: v as MoneyLocation['type'] };
                     setLocalLocations(updated);
                   }}
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, minWidth: 0 }}
                   options={[
                     { label: 'PayPal', value: 'PayPal' },
                     { label: 'Kraken', value: 'Kraken' },
@@ -668,7 +823,7 @@ export default function CampaignDetailPage() {
                     setLocalLocations(updated);
                   }}
                   prefix="$"
-                  style={{ flex: 1 }}
+                  style={{ flex: 1, minWidth: 0 }}
                   min={0}
                 />
                 <Button
@@ -752,12 +907,13 @@ export default function CampaignDetailPage() {
 
       {/* Stocks Area */}
       <Card
+        className="campaign-detail-card campaign-stocks-card"
         title={
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-            <span style={{ color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="stocks-card-title">
+            <span className="stocks-card-heading">
               Stocks
               {campaign.stocks.length > 0 && viewMode !== 'list' && (
-                <div className="time-range-group" style={{ marginLeft: 16 }}>
+                <div className="time-range-group">
                   {TIME_RANGES.map((r) => (
                     <button
                       key={r.key}
@@ -770,7 +926,7 @@ export default function CampaignDetailPage() {
                 </div>
               )}
             </span>
-            <Space>
+            <Space className="stocks-card-actions">
               <Segmented
                 options={[
                   { value: 'list', icon: <UnorderedListOutlined /> },
@@ -780,7 +936,7 @@ export default function CampaignDetailPage() {
                 value={viewMode}
                 onChange={(v) => setViewMode(v as 'list' | 'candlestick' | 'area')}
               />
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddStockModal(true)}>
+              <Button type="primary" icon={<PlusOutlined />} className="stocks-add-btn" onClick={() => setAddStockModal(true)}>
                 Add Stock
               </Button>
             </Space>
@@ -796,13 +952,21 @@ export default function CampaignDetailPage() {
         ) : viewMode === 'list' ? (
           <>
             {activeStockRows.length > 0 && (
-              <Table
-                dataSource={activeStockRows}
-                columns={stockColumns}
-                pagination={false}
-                expandable={stockExpandable}
-                rowClassName={getStockRowClassName}
-              />
+              <>
+                <div className="desktop-stock-table">
+                  <Table
+                    dataSource={activeStockRows}
+                    columns={stockColumns}
+                    pagination={false}
+                    expandable={stockExpandable}
+                    rowClassName={getStockRowClassName}
+                    scroll={{ x: 1100 }}
+                  />
+                </div>
+                <div className="mobile-stock-cards">
+                  {renderMobileStockCards(activeStocks)}
+                </div>
+              </>
             )}
 
             {soldStockRows.length > 0 && (
@@ -821,13 +985,19 @@ export default function CampaignDetailPage() {
                   <div style={{ color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>
                     These companies are fully sold and kept here for realized P&L and transaction history.
                   </div>
-                  <Table
-                    dataSource={soldStockRows}
-                    columns={stockColumns}
-                    pagination={false}
-                    expandable={stockExpandable}
-                    rowClassName={getStockRowClassName}
-                  />
+                  <div className="desktop-stock-table">
+                    <Table
+                      dataSource={soldStockRows}
+                      columns={stockColumns}
+                      pagination={false}
+                      expandable={stockExpandable}
+                      rowClassName={getStockRowClassName}
+                      scroll={{ x: 1100 }}
+                    />
+                  </div>
+                  <div className="mobile-stock-cards">
+                    {renderMobileStockCards(soldStocks)}
+                  </div>
                 </div>
               </div>
             )}
@@ -897,6 +1067,7 @@ export default function CampaignDetailPage() {
                   )}
                   <Col xs={24} lg={12}>
                     <div
+                      className={`chart-stock-card ${soldOut ? 'chart-stock-card-sold' : ''} ${starred ? 'chart-stock-card-starred' : ''}`}
                       style={{
                         background: soldOut
                           ? 'rgba(127, 29, 29, 0.14)'
@@ -913,6 +1084,7 @@ export default function CampaignDetailPage() {
                       }}
                     >
                       <div
+                        className="chart-stock-card-header"
                         style={{
                           padding: '12px 16px',
                           borderBottom: soldOut
@@ -924,7 +1096,7 @@ export default function CampaignDetailPage() {
                           justifyContent: 'space-between',
                         }}
                       >
-                        <Space size="small">
+                        <Space size="small" className="chart-stock-title">
                           <Button
                             type="text"
                             size="small"
@@ -944,7 +1116,7 @@ export default function CampaignDetailPage() {
                             </Tag>
                           )}
                         </Space>
-                        <Space size="small">
+                        <Space size="small" className="chart-stock-actions">
                           <Button
                             size="small"
                             type={notifications.length > 0 ? 'primary' : 'text'}
@@ -963,7 +1135,7 @@ export default function CampaignDetailPage() {
                       </div>
                       <StockChart
                         symbol={stock.symbol}
-                        height={260}
+                        height={220}
                         hideToolbar
                         activeRangeOverride={globalTimeRange}
                         chartType={viewMode === 'area' ? 'area' : 'candlestick'}
@@ -1021,6 +1193,7 @@ export default function CampaignDetailPage() {
         }}
         footer={null}
         width={540}
+        className="chart-alert-modal"
         destroyOnClose
       >
         {notificationStock && (

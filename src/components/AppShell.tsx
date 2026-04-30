@@ -43,8 +43,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const selectedKey = menuItems.find((item) => pathname === item.key || (item.key !== "/" && pathname.startsWith(item.key)))?.key || "/";
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout className="app-shell" style={{ minHeight: "100vh" }}>
       <Sider
+        className="app-sidebar"
         collapsible
         collapsed={collapsed}
         onCollapse={setCollapsed}
@@ -71,22 +72,40 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           style={{ borderRight: 0 }}
         />
       </Sider>
-      <Layout style={{ marginLeft: collapsed ? 80 : 240, transition: "margin-left 0.2s ease" }}>
+      <Layout className="app-main-layout" style={{ marginLeft: collapsed ? 80 : 240, transition: "margin-left 0.2s ease" }}>
         <Header
+          className="app-header"
           style={{
             padding: "0 24px",
             display: "flex",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             alignItems: "center",
             borderBottom: "1px solid #1e2a3a",
             position: "sticky",
             top: 0,
             zIndex: 50,
           }}>
+          <div className="mobile-header-brand">
+            <div className="sidebar-brand-icon">S</div>
+            <span className="sidebar-brand-text">Finances</span>
+          </div>
           <NotificationBell />
         </Header>
-        <Content style={{ minHeight: "calc(100vh - 64px)" }}>{children}</Content>
+        <Content className="app-content" style={{ minHeight: "calc(100vh - 64px)" }}>{children}</Content>
       </Layout>
+      <nav className="mobile-bottom-nav" aria-label="Primary navigation">
+        {menuItems.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`mobile-bottom-nav-item ${selectedKey === item.key ? 'active' : ''}`}
+            onClick={() => router.push(item.key)}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
     </Layout>
   );
 }

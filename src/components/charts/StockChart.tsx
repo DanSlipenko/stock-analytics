@@ -243,7 +243,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
         lineWidth: 2,
         lineStyle: 2,
         axisLabelVisible: true,
-        title: getAlertLabel(rule, targetPrice),
+        title: '',
       });
 
       priceLineRefs.current.push(priceLine);

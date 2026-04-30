@@ -163,6 +163,11 @@ body {
   letter-spacing: -0.3px;
 }
 
+.mobile-header-brand,
+.mobile-bottom-nav {
+  display: none;
+}
+
 /* ---- Campaign cards ---- */
 .campaign-card {
   cursor: pointer;
@@ -312,6 +317,194 @@ body {
   background: rgba(127, 29, 29, 0.2) !important;
 }
 
+.campaign-page-heading,
+.stocks-card-title,
+.stocks-card-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.campaign-page-heading {
+  gap: 12px;
+}
+
+.campaign-page-heading h1 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.stocks-card-title {
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
+}
+
+.stocks-card-heading {
+  color: var(--text-primary);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stocks-card-actions {
+  flex: 0 0 auto;
+}
+
+.mobile-stock-cards {
+  display: none;
+}
+
+.mobile-stock-list {
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-stock-card {
+  background: #0f1629;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.mobile-stock-card-starred {
+  background: rgba(120, 53, 15, 0.18);
+  border-color: rgba(245, 158, 11, 0.42);
+}
+
+.mobile-stock-card-sold {
+  background: rgba(127, 29, 29, 0.14);
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.mobile-stock-card-header,
+.mobile-stock-title,
+.mobile-stock-tags,
+.mobile-stock-funding,
+.mobile-transaction-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mobile-stock-card-header {
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.mobile-stock-title {
+  gap: 4px;
+}
+
+.mobile-stock-symbol {
+  height: auto;
+  padding: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.mobile-stock-tags {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mobile-stock-tags .ant-tag {
+  margin-inline-end: 0;
+}
+
+.mobile-stock-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mobile-stock-metrics > div {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(10, 14, 26, 0.48);
+  border: 1px solid rgba(30, 42, 58, 0.8);
+}
+
+.mobile-stock-metrics span,
+.mobile-stock-funding span,
+.mobile-transaction-row span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.mobile-stock-metrics strong,
+.mobile-transaction-row strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.mobile-stock-metrics small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mobile-stock-funding {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(30, 42, 58, 0.75);
+}
+
+.mobile-stock-funding .ant-tag {
+  margin-inline-end: 0;
+}
+
+.mobile-stock-funding strong {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.mobile-transaction-list {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(30, 42, 58, 0.75);
+}
+
+.mobile-transaction-title {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+
+.mobile-transaction-row {
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.mobile-transaction-row + .mobile-transaction-row {
+  border-top: 1px solid rgba(30, 42, 58, 0.65);
+}
+
+.mobile-stock-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.mobile-stock-actions .ant-btn {
+  min-width: 0;
+}
+
 @media (max-width: 420px) {
   .page-container {
     padding: 20px 16px;
@@ -332,6 +525,270 @@ body {
   .campaign-card .ant-card-actions > li:not(:last-child) {
     border-right: none;
     border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 1024px) {
+  .app-sidebar,
+  .ant-layout-sider {
+    display: none;
+  }
+
+  .app-main-layout,
+  .app-shell > .ant-layout {
+    margin-left: 0 !important;
+  }
+
+  .app-header,
+  .ant-layout-header {
+    height: 58px;
+    padding: 0 14px !important;
+  }
+
+  .mobile-header-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .mobile-header-brand .sidebar-brand-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .app-content {
+    min-height: calc(100vh - 58px) !important;
+    padding-bottom: 76px;
+  }
+
+  .mobile-bottom-nav {
+    position: fixed;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    z-index: 110;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 8px;
+    border: 1px solid rgba(30, 42, 58, 0.95);
+    border-radius: 18px;
+    background: rgba(15, 23, 42, 0.94);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(14px);
+  }
+
+  .mobile-bottom-nav-item {
+    display: flex;
+    min-width: 0;
+    min-height: 48px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: #94a3b8;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .mobile-bottom-nav-item svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .mobile-bottom-nav-item span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-bottom-nav-item.active {
+    background: rgba(0, 212, 170, 0.14);
+    color: #64f0d4;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-container {
+    padding: 16px 12px 28px;
+  }
+
+  .page-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .page-header h1 {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  .page-primary-action,
+  .stocks-add-btn {
+    width: 100%;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+
+  .stat-card .ant-card-body {
+    padding: 14px 12px;
+  }
+
+  .stat-card .ant-statistic-title {
+    font-size: 11px;
+    margin-bottom: 6px;
+  }
+
+  .stat-card .ant-statistic-content {
+    font-size: 17px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  .campaign-detail-card {
+    border-radius: 14px;
+  }
+
+  .campaign-detail-card .ant-card-head {
+    padding: 0 14px;
+  }
+
+  .campaign-detail-card .ant-card-head-wrapper {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .campaign-detail-card .ant-card-head-title,
+  .campaign-detail-card .ant-card-extra {
+    padding: 0;
+    width: 100%;
+  }
+
+  .campaign-detail-card .ant-card-body {
+    padding: 14px;
+  }
+
+  .money-location-edit-actions,
+  .money-location-edit-actions .ant-space-item,
+  .money-location-edit-actions .ant-btn {
+    width: 100%;
+  }
+
+  .money-location-edit-row {
+    flex-direction: column;
+  }
+
+  .money-location-edit-row .ant-input,
+  .money-location-edit-row .ant-select,
+  .money-location-edit-row .ant-input-number,
+  .money-location-edit-row .ant-btn {
+    width: 100% !important;
+  }
+
+  .money-locations-card .ant-row {
+    row-gap: 10px;
+  }
+
+  .money-locations-card .ant-card-small > .ant-card-body {
+    padding: 12px;
+  }
+
+  .stocks-card-title,
+  .stocks-card-actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .stocks-card-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .stocks-card-actions .ant-segmented {
+    width: 100%;
+  }
+
+  .stocks-card-actions .ant-segmented-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .time-range-group {
+    width: 100%;
+    overflow-x: auto;
+    padding: 4px;
+  }
+
+  .time-range-btn {
+    flex: 0 0 auto;
+    padding: 5px 10px;
+  }
+
+  .desktop-stock-table {
+    display: none;
+  }
+
+  .mobile-stock-cards {
+    display: block;
+  }
+
+  .chart-stock-card-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .chart-stock-title,
+  .chart-stock-actions {
+    flex-wrap: wrap;
+  }
+
+  .chart-stock-actions .ant-btn {
+    flex: 1 1 calc(50% - 6px);
+  }
+
+  .chart-alert-modal .ant-modal {
+    max-width: calc(100vw - 24px);
+  }
+
+  .chart-alert-modal .ant-modal-content {
+    padding: 18px 14px;
+  }
+
+  .chart-alert-modal .ant-radio-group {
+    display: grid;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .chart-alert-modal .ant-radio-button-wrapper,
+  .chart-alert-modal .ant-radio-wrapper {
+    width: 100%;
+  }
+
+  .chart-alert-modal .ant-list-item {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .chart-alert-modal .ant-list-item-meta-title .ant-space {
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
 }
 
