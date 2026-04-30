@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import { Card, Button, Row, Col, Tag, Statistic, Empty, Spin, Popconfirm, message } from "antd";
+import { Card, Button, Row, Col, Statistic, Spin, Popconfirm, message } from "antd";
 import { PlusOutlined, DeleteOutlined, EditOutlined, FolderOutlined, RightOutlined, FundOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
@@ -95,7 +95,7 @@ export default function CampaignsPage() {
               const stats = calculateCampaignStats(campaign, quotes);
 
               return (
-                <Col xs={24} md={12} lg={8} key={campaign._id}>
+                <Col xs={24} lg={12} xl={8} key={campaign._id}>
                   <Card
                     className="campaign-card"
                     hoverable
@@ -105,6 +105,7 @@ export default function CampaignsPage() {
                         key="edit"
                         type="text"
                         icon={<EditOutlined />}
+                        className="campaign-action-btn"
                         onClick={(e) => {
                           e.stopPropagation();
                           setEditingCampaign(campaign);
@@ -123,49 +124,59 @@ export default function CampaignsPage() {
                         onCancel={(e) => e?.stopPropagation()}
                         okText="Delete"
                         okType="danger">
-                        <Button type="text" danger icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} size="small">
+                        <Button
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined />}
+                          className="campaign-action-btn"
+                          onClick={(e) => e.stopPropagation()}
+                          size="small">
                           Delete
                         </Button>
                       </Popconfirm>,
-                      <Button key="view" type="text" icon={<RightOutlined />} size="small">
+                      <Button key="view" type="text" icon={<RightOutlined />} className="campaign-action-btn" size="small">
                         View
                       </Button>,
                     ]}>
-                    <div style={{ marginBottom: 16 }}>
-                      <div style={{ fontSize: 18, fontWeight: 700, color: "#e2e8f0", marginBottom: 4 }}>{campaign.name}</div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <Tag color="blue">{campaign.stocks.length} stocks</Tag>
-                        <Tag color="default">{campaign.moneyLocations.length} locations</Tag>
-                        {campaign.startDate && <Tag color="purple">Started {new Date(campaign.startDate).toLocaleDateString()}</Tag>}
+                    <div className="campaign-card-header">
+                      <div className="campaign-card-title">{campaign.name}</div>
+                      <div className="campaign-card-pills">
+                        <span className="campaign-pill campaign-pill-accent">{campaign.stocks.length} stocks</span>
+                        <span className="campaign-pill">{campaign.moneyLocations.length} locations</span>
+                        {campaign.startDate && (
+                          <span className="campaign-pill campaign-pill-muted">
+                            Started {new Date(campaign.startDate).toLocaleDateString()}
+                          </span>
+                        )}
                       </div>
                     </div>
 
-                    <Row gutter={8}>
-                      <Col span={8}>
+                    <div className="campaign-card-stats">
+                      <div className="campaign-stat">
                         <Statistic
-                          title={<span style={{ color: "#64748b", fontSize: 11 }}>Invested</span>}
+                          title={<span className="campaign-stat-label">Invested</span>}
                           value={stats.invested}
                           prefix="$"
                           precision={0}
-                          valueStyle={{ fontSize: 16, color: "#e2e8f0" }}
+                          valueStyle={{ fontSize: 16, color: "#e2e8f0", lineHeight: 1.15 }}
                         />
-                      </Col>
-                      <Col span={8}>
+                      </div>
+                      <div className="campaign-stat">
                         <Statistic
-                          title={<span style={{ color: "#64748b", fontSize: 11 }}>In Stocks</span>}
+                          title={<span className="campaign-stat-label">In Stocks</span>}
                           value={stats.currentValue}
                           prefix="$"
                           precision={0}
-                          valueStyle={{ fontSize: 16, color: "#e2e8f0" }}
+                          valueStyle={{ fontSize: 16, color: "#e2e8f0", lineHeight: 1.15 }}
                         />
-                      </Col>
-                      <Col span={8}>
+                      </div>
+                      <div className="campaign-stat campaign-stat-pnl">
                         <div>
-                          <div style={{ color: "#64748b", fontSize: 11, marginBottom: 8 }}>P&L</div>
+                          <div className="campaign-stat-label">P&L</div>
                           <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="small" />
                         </div>
-                      </Col>
-                    </Row>
+                      </div>
+                    </div>
                   </Card>
                 </Col>
               );

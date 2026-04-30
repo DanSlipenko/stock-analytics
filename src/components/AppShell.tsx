@@ -58,9 +58,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           borderRight: "1px solid #1e2a3a",
         }}
         theme="dark">
-        <div className="sidebar-brand">
+        <div className="sidebar-brand !py-2">
           <div className="sidebar-brand-icon">S</div>
-          {!collapsed && <span className="sidebar-brand-text">StockPulse</span>}
+          {!collapsed && <span className="sidebar-brand-text">Finances</span>}
         </div>
         <Menu
           theme="dark"
