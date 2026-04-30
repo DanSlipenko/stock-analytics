@@ -23,7 +23,57 @@ const MOCK_STOCKS = [
   { description: "Solana USD", displaySymbol: "SOL-USD", symbol: "BINANCE:SOLUSDT", type: "Cryptocurrency" },
   { description: "Cardano USD", displaySymbol: "ADA-USD", symbol: "BINANCE:ADAUSDT", type: "Cryptocurrency" },
   { description: "Dogecoin USD", displaySymbol: "DOGE-USD", symbol: "BINANCE:DOGEUSDT", type: "Cryptocurrency" },
+  { description: "Fidelity ZERO Total Market Index Fund", displaySymbol: "FZROX", symbol: "FZROX", type: "Mutual Fund" },
 ];
+
+const NORMALIZED_ALLOWED_TYPES = new Set([
+  "common stock",
+  "cryptocurrency",
+  "adr",
+  "etf",
+  "etp",
+  "reit",
+  "mutual fund",
+  "fund",
+]);
+
+function isLikelyTicker(query: string) {
+  return /^[A-Z0-9][A-Z0-9.:-]{0,14}$/i.test(query.trim());
+}
+
+function createManualResult(query: string) {
+  const symbol = query.trim().toUpperCase();
+  return {
+    description: `Use ${symbol}`,
+    displaySymbol: symbol,
+    symbol,
+    type: "Symbol",
+  };
+}
+
+async function canUseManualResult(query: string) {
+  const symbol = query.trim().toUpperCase();
+  if (!isLikelyTicker(symbol)) return false;
+  if (symbol.startsWith("BINANCE:")) return true;
+
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`,
+      {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        next: { revalidate: 300 },
+      }
+    );
+
+    if (!res.ok) return false;
+
+    const data = await res.json();
+    return Boolean(data.chart?.result?.[0]?.meta?.symbol) && !data.chart?.error;
+  } catch (error) {
+    console.error("Manual symbol validation error:", error);
+    return false;
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -37,7 +87,10 @@ export async function GET(request: NextRequest) {
     const filtered = MOCK_STOCKS.filter(
       (s) => s.symbol.toLowerCase().includes(q.toLowerCase()) || s.description.toLowerCase().includes(q.toLowerCase()),
     ).slice(0, 10);
-    return NextResponse.json({ results: filtered });
+    const hasExactMatch = filtered.some((s) => s.symbol.toLowerCase() === q.toLowerCase());
+    const shouldAddManualResult = !hasExactMatch && await canUseManualResult(q);
+    const results = shouldAddManualResult ? [createManualResult(q), ...filtered].slice(0, 10) : filtered;
+    return NextResponse.json({ results });
   }
 
   try {
@@ -51,16 +104,10 @@ export async function GET(request: NextRequest) {
 
     const data = await res.json();
 
-    // Limit results and allow common stocks, ADRs, ETFs, and crypto
+    // Limit results and allow common stocks, funds, ADRs, ETFs, and crypto
     let results = (data.result || [])
-      .filter((r: { type: string }) => 
-        r.type === "Common Stock" || 
-        r.type === "Cryptocurrency" || 
-        r.type === "ADR" || 
-        r.type === "ETF" || 
-        r.type === "ETP" || 
-        r.type === "REIT" ||
-        !r.type
+      .filter((r: { type: string }) =>
+        !r.type || NORMALIZED_ALLOWED_TYPES.has(r.type.toLowerCase())
       )
       .map((r: { description: string; displaySymbol: string; symbol: string; type: string }) => ({
         description: r.description,
@@ -68,6 +115,13 @@ export async function GET(request: NextRequest) {
         symbol: r.symbol,
         type: r.type,
       }));
+
+    const hasExactMatch = results.some((r: { symbol: string; displaySymbol: string }) =>
+      r.symbol.toLowerCase() === q.toLowerCase() || r.displaySymbol.toLowerCase() === q.toLowerCase()
+    );
+    if (!hasExactMatch && await canUseManualResult(q)) {
+      results.unshift(createManualResult(q));
+    }
 
     // Prioritize US stocks (which typically don't have a dot in the symbol, except for class shares like BRK.B)
     results.sort((a: any, b: any) => {

@@ -3,22 +3,23 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Card, Button, Table, Tag, Statistic, Row, Col, Spin, Empty, Space, Input, Select,
-  InputNumber, message, Popconfirm, Divider, Segmented, Progress
+  InputNumber, message, Popconfirm, Divider, Segmented, Progress, Modal, Form, Radio, List, Typography
 } from 'antd';
 import {
   PlusOutlined, ArrowLeftOutlined, BankOutlined, DeleteOutlined,
   DollarOutlined, TrophyOutlined, RiseOutlined, FallOutlined,
-  LineChartOutlined, UnorderedListOutlined, AppstoreOutlined
+  LineChartOutlined, UnorderedListOutlined, AppstoreOutlined, BellOutlined,
+  StarFilled, StarOutlined
 } from '@ant-design/icons';
 import { useRouter, useParams } from 'next/navigation';
 import { useStore } from '@/context/StoreContext';
 import { useStockQuotes } from '@/hooks/useStockQuote';
-import { Campaign, CampaignStock, MoneyLocation } from '@/types';
+import { Campaign, CampaignStock, MoneyLocation, StockNotification } from '@/types';
 import AddStockModal from '@/components/campaigns/AddStockModal';
 import SellStockModal from '@/components/campaigns/SellStockModal';
 import EditStockModal from '@/components/campaigns/EditStockModal';
 import EditTransactionModal from '@/components/campaigns/EditTransactionModal';
-import StockChart, { TimeRange, TIME_RANGES } from '@/components/charts/StockChart';
+import StockChart, { ChartAlertRule, TimeRange, TIME_RANGES } from '@/components/charts/StockChart';
 import StockDetailDrawer from '@/components/charts/StockDetailDrawer';
 import PnLDisplay from '@/components/shared/PnLDisplay';
 import { calculateCampaignStats } from '@/lib/campaignStats';
@@ -35,10 +36,43 @@ type LocationBalance = {
 const formatCurrency = (value: number) =>
   `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+const getNotificationTargetPrice = (notification: StockNotification) => {
+  if (notification.targetPrice != null) return notification.targetPrice;
+  if (notification.targetPercent == null) return null;
+
+  const multiplier = notification.type === 'above'
+    ? 1 + notification.targetPercent / 100
+    : 1 - notification.targetPercent / 100;
+
+  return notification.referencePrice * multiplier;
+};
+
+const formatNotification = (notification: StockNotification) => {
+  const direction = notification.type === 'above' ? 'Goes above' : 'Drops below';
+  const targetPrice = getNotificationTargetPrice(notification);
+  const target = notification.targetPrice != null
+    ? formatCurrency(notification.targetPrice)
+    : `${notification.targetPercent}% (${targetPrice ? formatCurrency(targetPrice) : '—'})`;
+
+  return `${direction} ${target}`;
+};
+
+const getSoldShares = (stock: CampaignStock) =>
+  stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
+
+const getRemainingShares = (stock: CampaignStock) =>
+  Math.max(stock.shares - getSoldShares(stock), 0);
+
+const isSoldOut = (stock: CampaignStock) => getRemainingShares(stock) <= 0;
+
+const sortStarredFirst = (stocks: CampaignStock[]) =>
+  [...stocks].sort((a, b) => Number(Boolean(b.isStarred)) - Number(Boolean(a.isStarred)));
+
 export default function CampaignDetailPage() {
   const router = useRouter();
   const params = useParams();
   const { state, dispatch } = useStore();
+  const [notificationForm] = Form.useForm();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [addStockModal, setAddStockModal] = useState(false);
@@ -46,6 +80,8 @@ export default function CampaignDetailPage() {
   const [sellStock, setSellStock] = useState<CampaignStock | null>(null);
   const [editStock, setEditStock] = useState<CampaignStock | null>(null);
   const [editTransaction, setEditTransaction] = useState<{ stock: CampaignStock; transaction: any } | null>(null);
+  const [notificationStock, setNotificationStock] = useState<CampaignStock | null>(null);
+  const [savingNotification, setSavingNotification] = useState(false);
   const [drawerSymbol, setDrawerSymbol] = useState<string | null>(null);
 
   // View mode
@@ -57,6 +93,7 @@ export default function CampaignDetailPage() {
   const [localLocations, setLocalLocations] = useState<MoneyLocation[]>([]);
 
   const campaignId = params.id as string;
+  const notificationThresholdType = Form.useWatch('thresholdType', notificationForm) || 'price';
 
   // Fetch campaign
   useEffect(() => {
@@ -85,6 +122,71 @@ export default function CampaignDetailPage() {
   }, [campaign]);
 
   const { quotes } = useStockQuotes(symbols);
+
+  const saveStockNotifications = useCallback(async (stockId: string, notifications: StockNotification[]) => {
+    if (!campaign) return false;
+
+    const updatedStocks = campaign.stocks.map((stock) => (
+      stock._id === stockId ? { ...stock, notifications } : stock
+    ));
+
+    setSavingNotification(true);
+    try {
+      const res = await fetch(`/api/campaigns/${campaign._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stocks: updatedStocks }),
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        dispatch({ type: 'UPDATE_CAMPAIGN', payload: updated });
+        setCampaign(updated);
+        setNotificationStock(updated.stocks.find((stock: CampaignStock) => stock._id === stockId) || null);
+        return true;
+      }
+
+      message.error('Unable to save notification');
+      return false;
+    } catch (e) {
+      console.error('Save notifications error:', e);
+      message.error('Unable to save notification');
+      return false;
+    } finally {
+      setSavingNotification(false);
+    }
+  }, [campaign, dispatch]);
+
+  const addStockNotification = useCallback(async () => {
+    if (!notificationStock?._id) return;
+
+    const values = await notificationForm.validateFields();
+    const nextNotification: StockNotification = {
+      type: values.direction,
+      referencePrice: notificationStock.buyPrice,
+      targetPrice: values.thresholdType === 'price' ? values.targetValue : undefined,
+      targetPercent: values.thresholdType === 'percent' ? values.targetValue : undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    const saved = await saveStockNotifications(notificationStock._id, [
+      ...(notificationStock.notifications || []),
+      nextNotification,
+    ]);
+    if (saved) {
+      notificationForm.resetFields();
+      notificationForm.setFieldsValue({ thresholdType: 'price', direction: 'above' });
+      message.success('Notification added');
+    }
+  }, [notificationForm, notificationStock, saveStockNotifications]);
+
+  const deleteStockNotification = useCallback(async (index: number) => {
+    if (!notificationStock?._id) return;
+
+    const notifications = (notificationStock.notifications || []).filter((_, notificationIndex) => notificationIndex !== index);
+    const saved = await saveStockNotifications(notificationStock._id, notifications);
+    if (saved) message.success('Notification removed');
+  }, [notificationStock, saveStockNotifications]);
 
   // Save money locations
   const saveLocations = useCallback(async () => {
@@ -125,6 +227,39 @@ export default function CampaignDetailPage() {
       }
     } catch (e) {
       console.error('Delete stock error:', e);
+    }
+  }, [campaign, dispatch]);
+
+  const toggleStockStarred = useCallback(async (stockId: string) => {
+    if (!campaign) return;
+
+    const stockToToggle = campaign.stocks.find((stock) => stock._id === stockId);
+    if (!stockToToggle) return;
+
+    const nextIsStarred = !stockToToggle.isStarred;
+    const updatedStocks = campaign.stocks.map((stock) => (
+      stock._id === stockId ? { ...stock, isStarred: nextIsStarred } : stock
+    ));
+
+    try {
+      const res = await fetch(`/api/campaigns/${campaign._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stocks: updatedStocks }),
+      });
+
+      if (res.ok) {
+        const updated = await res.json();
+        dispatch({ type: 'UPDATE_CAMPAIGN', payload: updated });
+        setCampaign(updated);
+        message.success(nextIsStarred ? 'Position starred' : 'Position unstarred');
+        return;
+      }
+
+      message.error('Unable to update star');
+    } catch (e) {
+      console.error('Toggle stock star error:', e);
+      message.error('Unable to update star');
     }
   }, [campaign, dispatch]);
 
@@ -193,27 +328,52 @@ export default function CampaignDetailPage() {
     );
   }
 
+  const activeStocks = sortStarredFirst(campaign.stocks.filter((stock) => !isSoldOut(stock)));
+  const soldStocks = sortStarredFirst(campaign.stocks.filter(isSoldOut));
+  const activeStockRows = activeStocks.map((stock) => ({ ...stock, key: stock._id }));
+  const soldStockRows = soldStocks.map((stock) => ({ ...stock, key: stock._id }));
+
   const stockColumns = [
     {
       title: 'Symbol',
       dataIndex: 'symbol',
       key: 'symbol',
-      render: (symbol: string) => (
-        <Button
-          type="link"
-          style={{ fontWeight: 700, fontSize: 15, padding: 0 }}
-          onClick={(e) => { e.stopPropagation(); setDrawerSymbol(symbol); }}
-        >
-          {symbol} <LineChartOutlined style={{ fontSize: 11 }} />
-        </Button>
-      ),
+      render: (symbol: string, record: CampaignStock) => {
+        const soldOut = isSoldOut(record);
+        const starred = Boolean(record.isStarred);
+
+        return (
+          <Space size={6}>
+            <Button
+              type="text"
+              size="small"
+              icon={starred ? <StarFilled /> : <StarOutlined />}
+              style={{ color: starred ? '#f59e0b' : '#64748b' }}
+              title={starred ? 'Unstar position' : 'Star position'}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (record._id) toggleStockStarred(record._id);
+              }}
+            />
+            <Button
+              type="link"
+              style={{ fontWeight: 700, fontSize: 15, padding: 0, color: soldOut ? '#fca5a5' : starred ? '#fbbf24' : undefined }}
+              onClick={(e) => { e.stopPropagation(); setDrawerSymbol(symbol); }}
+            >
+              {symbol} <LineChartOutlined style={{ fontSize: 11 }} />
+            </Button>
+            {starred && <Tag color="gold">Starred</Tag>}
+            {soldOut && <Tag color="red">Sold</Tag>}
+          </Space>
+        );
+      },
     },
     {
       title: 'Shares',
       key: 'shares',
       render: (_: unknown, record: CampaignStock) => {
-        const sold = record.transactions.reduce((sum, t) => sum + t.shares, 0);
-        const remaining = record.shares - sold;
+        const sold = getSoldShares(record);
+        const remaining = getRemainingShares(record);
         return (
           <span>
             {remaining.toLocaleString()}
@@ -242,8 +402,7 @@ export default function CampaignDetailPage() {
       title: 'In Stocks',
       key: 'currentValue',
       render: (_: unknown, record: CampaignStock) => {
-        const sold = record.transactions.reduce((sum, t) => sum + t.shares, 0);
-        const remaining = record.shares - sold;
+        const remaining = getRemainingShares(record);
         const currentPrice = quotes[record.symbol]?.currentPrice ?? record.buyPrice;
         const currentValue = remaining * currentPrice;
 
@@ -255,8 +414,9 @@ export default function CampaignDetailPage() {
       title: 'Unrealized P&L',
       key: 'unrealized',
       render: (_: unknown, record: CampaignStock) => {
-        const sold = record.transactions.reduce((sum, t) => sum + t.shares, 0);
-        const remaining = record.shares - sold;
+        const remaining = getRemainingShares(record);
+        if (remaining <= 0) return <span style={{ color: '#fca5a5' }}>Sold</span>;
+
         const curPrice = quotes[record.symbol]?.currentPrice || record.buyPrice;
         const pnl = remaining * (curPrice - record.buyPrice);
         const pnlPct = ((curPrice - record.buyPrice) / record.buyPrice) * 100;
@@ -304,8 +464,7 @@ export default function CampaignDetailPage() {
       title: 'Actions',
       key: 'actions',
       render: (_: unknown, record: CampaignStock) => {
-        const sold = record.transactions.reduce((sum, t) => sum + t.shares, 0);
-        const hasRemaining = record.shares - sold > 0;
+        const hasRemaining = getRemainingShares(record) > 0;
         return (
           <Space size="small">
             {hasRemaining && (
@@ -332,6 +491,61 @@ export default function CampaignDetailPage() {
       width: 220,
     },
   ];
+
+  const getStockRowClassName = (record: CampaignStock) => {
+    if (isSoldOut(record)) return 'campaign-stock-row-sold';
+    return record.isStarred ? 'campaign-stock-row-starred' : '';
+  };
+
+  const stockExpandable = {
+    expandedRowRender: (record: CampaignStock) => (
+      <div style={{ padding: '8px 0' }}>
+        <Divider titlePlacement="start" style={{ color: '#64748b', fontSize: 12, margin: '0 0 12px 0' }}>
+          Transaction History
+        </Divider>
+        {record.transactions.length === 0 ? (
+          <span style={{ color: '#64748b', fontSize: 13 }}>No transactions yet</span>
+        ) : (
+          <Table
+            dataSource={record.transactions.map((t, i) => ({ ...t, key: i }))}
+            columns={[
+              { title: 'Date', dataIndex: 'date', render: (d: string) => new Date(d).toLocaleDateString() },
+              { title: 'Shares Sold', dataIndex: 'shares', render: (v: number) => v.toLocaleString() },
+              { title: 'Sell Price', dataIndex: 'price', render: (v: number) => `$${v.toFixed(2)}` },
+              { title: '% Sold', dataIndex: 'percentSold', render: (v: number) => `${v}%` },
+              {
+                title: 'Realized P&L',
+                key: 'pnl',
+                render: (_: unknown, t: { shares: number; price: number }) => {
+                  const pnl = t.shares * (t.price - record.buyPrice);
+                  return <PnLDisplay value={pnl} size="small" />;
+                },
+              },
+              {
+                title: 'Actions',
+                key: 'actions',
+                render: (_: unknown, transactionRecord: any) => (
+                  <Button
+                    size="small"
+                    type="text"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditTransaction({ stock: record, transaction: transactionRecord });
+                    }}
+                  >
+                    Edit
+                  </Button>
+                ),
+                align: 'right' as const,
+              },
+            ]}
+            pagination={false}
+            size="small"
+          />
+        )}
+      </div>
+    ),
+  };
 
   return (
     <div className="page-container">
@@ -580,64 +794,69 @@ export default function CampaignDetailPage() {
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         ) : viewMode === 'list' ? (
-          <Table
-            dataSource={campaign.stocks.map((s) => ({ ...s, key: s._id }))}
-            columns={stockColumns}
-            pagination={false}
-            expandable={{
-              expandedRowRender: (record: CampaignStock) => (
-                <div style={{ padding: '8px 0' }}>
-                  <Divider titlePlacement="start" style={{ color: '#64748b', fontSize: 12, margin: '0 0 12px 0' }}>
-                    Transaction History
-                  </Divider>
-                  {record.transactions.length === 0 ? (
-                    <span style={{ color: '#64748b', fontSize: 13 }}>No transactions yet</span>
-                  ) : (
-                    <Table
-                      dataSource={record.transactions.map((t, i) => ({ ...t, key: i }))}
-                      columns={[
-                        { title: 'Date', dataIndex: 'date', render: (d: string) => new Date(d).toLocaleDateString() },
-                        { title: 'Shares Sold', dataIndex: 'shares', render: (v: number) => v.toLocaleString() },
-                        { title: 'Sell Price', dataIndex: 'price', render: (v: number) => `$${v.toFixed(2)}` },
-                        { title: '% Sold', dataIndex: 'percentSold', render: (v: number) => `${v}%` },
-                        {
-                          title: 'Realized P&L',
-                          key: 'pnl',
-                          render: (_: unknown, t: { shares: number; price: number }) => {
-                            const pnl = t.shares * (t.price - record.buyPrice);
-                            return <PnLDisplay value={pnl} size="small" />;
-                          },
-                        },
-                        {
-                          title: 'Actions',
-                          key: 'actions',
-                          render: (_: unknown, transactionRecord: any) => (
-                            <Button
-                              size="small"
-                              type="text"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditTransaction({ stock: record, transaction: transactionRecord });
-                              }}
-                            >
-                              Edit
-                            </Button>
-                          ),
-                          align: 'right' as const,
-                        },
-                      ]}
-                      pagination={false}
-                      size="small"
-                    />
-                  )}
+          <>
+            {activeStockRows.length > 0 && (
+              <Table
+                dataSource={activeStockRows}
+                columns={stockColumns}
+                pagination={false}
+                expandable={stockExpandable}
+                rowClassName={getStockRowClassName}
+              />
+            )}
+
+            {soldStockRows.length > 0 && (
+              <div style={{ marginTop: activeStockRows.length > 0 ? 28 : 0 }}>
+                <Divider titlePlacement="start" style={{ color: '#fca5a5', margin: '0 0 16px' }}>
+                  Sold Positions
+                </Divider>
+                <div
+                  style={{
+                    background: 'rgba(127, 29, 29, 0.16)',
+                    border: '1px solid rgba(248, 113, 113, 0.35)',
+                    borderRadius: 12,
+                    padding: 12,
+                  }}
+                >
+                  <div style={{ color: '#fca5a5', fontSize: 13, marginBottom: 12 }}>
+                    These companies are fully sold and kept here for realized P&L and transaction history.
+                  </div>
+                  <Table
+                    dataSource={soldStockRows}
+                    columns={stockColumns}
+                    pagination={false}
+                    expandable={stockExpandable}
+                    rowClassName={getStockRowClassName}
+                  />
                 </div>
-              ),
-            }}
-          />
+              </div>
+            )}
+          </>
         ) : (
           <Row gutter={[24, 24]}>
-            {campaign.stocks.map((stock) => {
+            {[...activeStocks, ...soldStocks].map((stock, index) => {
               const markers: import('lightweight-charts').SeriesMarker<import('lightweight-charts').Time>[] = [];
+              const notifications = stock.notifications || [];
+              const soldOut = isSoldOut(stock);
+              const starred = Boolean(stock.isStarred);
+              const alertRules: ChartAlertRule[] = notifications.map((notification) => ({
+                id: notification._id,
+                type: notification.type,
+                targetPrice: notification.targetPrice,
+                targetPercent: notification.targetPercent,
+                referencePrice: notification.referencePrice,
+                createdAt: notification.createdAt,
+              }));
+              const currentPrice = quotes[stock.symbol]?.currentPrice;
+              const triggeredCount = currentPrice == null
+                ? 0
+                : notifications.filter((notification) => {
+                  const targetPrice = getNotificationTargetPrice(notification);
+                  if (targetPrice == null) return false;
+                  return notification.type === 'above'
+                    ? currentPrice >= targetPrice
+                    : currentPrice <= targetPrice;
+                }).length;
               
               if (stock.buyDate) {
                 const d = new Date(stock.buyDate);
@@ -668,26 +887,92 @@ export default function CampaignDetailPage() {
               }
 
               return (
-                <Col key={stock._id} xs={24} lg={12}>
-                  <div style={{ background: '#0f1629', borderRadius: 12, border: '1px solid #1e2a3a', overflow: 'hidden' }}>
-                    <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e2a3a', display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontWeight: 700, fontSize: 16, color: '#e2e8f0' }}>{stock.symbol}</span>
-                      <Space size="small">
-                        <Button size="small" type="text" onClick={() => setBuyMoreStock(stock)}>Buy More</Button>
-                        <Button size="small" type="text" onClick={() => setEditStock(stock)}>Edit</Button>
-                        <Button size="small" type="text" onClick={() => setSellStock(stock)}>Sell</Button>
-                      </Space>
+                <React.Fragment key={stock._id}>
+                  {index === activeStocks.length && soldStocks.length > 0 && (
+                    <Col span={24}>
+                      <Divider titlePlacement="start" style={{ color: '#fca5a5', margin: '4px 0 -4px' }}>
+                        Sold Positions
+                      </Divider>
+                    </Col>
+                  )}
+                  <Col xs={24} lg={12}>
+                    <div
+                      style={{
+                        background: soldOut
+                          ? 'rgba(127, 29, 29, 0.14)'
+                          : starred
+                            ? 'rgba(120, 53, 15, 0.18)'
+                            : '#0f1629',
+                        borderRadius: 12,
+                        border: soldOut
+                          ? '1px solid rgba(248, 113, 113, 0.35)'
+                          : starred
+                            ? '1px solid rgba(245, 158, 11, 0.42)'
+                            : '1px solid #1e2a3a',
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div
+                        style={{
+                          padding: '12px 16px',
+                          borderBottom: soldOut
+                            ? '1px solid rgba(248, 113, 113, 0.28)'
+                            : starred
+                              ? '1px solid rgba(245, 158, 11, 0.28)'
+                              : '1px solid #1e2a3a',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                        }}
+                      >
+                        <Space size="small">
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={starred ? <StarFilled /> : <StarOutlined />}
+                            style={{ color: starred ? '#f59e0b' : '#64748b' }}
+                            title={starred ? 'Unstar position' : 'Star position'}
+                            onClick={() => {
+                              if (stock._id) toggleStockStarred(stock._id);
+                            }}
+                          />
+                          <span style={{ fontWeight: 700, fontSize: 16, color: '#e2e8f0' }}>{stock.symbol}</span>
+                          {starred && <Tag color="gold">Starred</Tag>}
+                          {soldOut && <Tag color="red">Sold</Tag>}
+                          {notifications.length > 0 && (
+                            <Tag color={triggeredCount > 0 ? 'red' : 'gold'}>
+                              {triggeredCount > 0 ? `${triggeredCount} hit` : `${notifications.length} alert${notifications.length === 1 ? '' : 's'}`}
+                            </Tag>
+                          )}
+                        </Space>
+                        <Space size="small">
+                          <Button
+                            size="small"
+                            type={notifications.length > 0 ? 'primary' : 'text'}
+                            icon={<BellOutlined />}
+                            onClick={() => {
+                              setNotificationStock(stock);
+                              notificationForm.setFieldsValue({ thresholdType: 'price', direction: 'above' });
+                            }}
+                          >
+                            Alerts
+                          </Button>
+                          <Button size="small" type="text" onClick={() => setBuyMoreStock(stock)}>Buy More</Button>
+                          <Button size="small" type="text" onClick={() => setEditStock(stock)}>Edit</Button>
+                          {!soldOut && <Button size="small" type="text" onClick={() => setSellStock(stock)}>Sell</Button>}
+                        </Space>
+                      </div>
+                      <StockChart
+                        symbol={stock.symbol}
+                        height={260}
+                        hideToolbar
+                        activeRangeOverride={globalTimeRange}
+                        chartType={viewMode === 'area' ? 'area' : 'candlestick'}
+                        markers={markers}
+                        alertRules={alertRules}
+                      />
                     </div>
-                    <StockChart
-                      symbol={stock.symbol}
-                      height={260}
-                      hideToolbar
-                      activeRangeOverride={globalTimeRange}
-                      chartType={viewMode === 'area' ? 'area' : 'candlestick'}
-                      markers={markers}
-                    />
-                  </div>
-                </Col>
+                  </Col>
+                </React.Fragment>
               );
             })}
           </Row>
@@ -727,6 +1012,117 @@ export default function CampaignDetailPage() {
         stock={editTransaction?.stock || null}
         transaction={editTransaction?.transaction || null}
       />
+      <Modal
+        title={<span style={{ fontSize: 18, fontWeight: 600 }}>{notificationStock?.symbol} Chart Alerts</span>}
+        open={!!notificationStock}
+        onCancel={() => {
+          setNotificationStock(null);
+          notificationForm.resetFields();
+        }}
+        footer={null}
+        width={540}
+        destroyOnClose
+      >
+        {notificationStock && (
+          <div style={{ marginTop: 16 }}>
+            <Typography.Text type="secondary">
+              Percentage alerts use the buy price as the reference: {formatCurrency(notificationStock.buyPrice)}.
+            </Typography.Text>
+
+            <Form
+              form={notificationForm}
+              layout="vertical"
+              initialValues={{ thresholdType: 'price', direction: 'above' }}
+              style={{ marginTop: 16 }}
+            >
+              <Form.Item name="direction" label="Highlight when price...">
+                <Radio.Group>
+                  <Radio.Button value="above">Goes Above</Radio.Button>
+                  <Radio.Button value="below">Drops Below</Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+
+              <Form.Item name="thresholdType" label="Target Type">
+                <Radio.Group>
+                  <Radio value="price">Fixed Price ($)</Radio>
+                  <Radio value="percent">Percentage from Buy Price (%)</Radio>
+                </Radio.Group>
+              </Form.Item>
+
+              <Form.Item name="targetValue" label="Value" rules={[{ required: true, message: 'Enter a target value' }]}>
+                <InputNumber
+                  prefix={notificationThresholdType === 'price' ? '$' : undefined}
+                  suffix={notificationThresholdType === 'percent' ? '%' : undefined}
+                  style={{ width: '100%' }}
+                  size="large"
+                  min={0.01}
+                  step={notificationThresholdType === 'price' ? 0.01 : 0.1}
+                />
+              </Form.Item>
+
+              <Button
+                type="primary"
+                icon={<BellOutlined />}
+                onClick={addStockNotification}
+                loading={savingNotification}
+                block
+              >
+                Add Chart Alert
+              </Button>
+            </Form>
+
+            <Divider titlePlacement="start" style={{ margin: '24px 0 12px' }}>
+              <span style={{ fontSize: 14, color: '#64748b' }}>Active alerts</span>
+            </Divider>
+
+            {(notificationStock.notifications || []).length === 0 ? (
+              <Empty
+                description={<span style={{ color: '#64748b' }}>No chart alerts for this stock yet.</span>}
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            ) : (
+              <List
+                size="small"
+                dataSource={notificationStock.notifications || []}
+                renderItem={(notification, index) => {
+                  const targetPrice = getNotificationTargetPrice(notification);
+                  const currentPrice = quotes[notificationStock.symbol]?.currentPrice;
+                  const isTriggered = targetPrice != null && currentPrice != null
+                    ? notification.type === 'above'
+                      ? currentPrice >= targetPrice
+                      : currentPrice <= targetPrice
+                    : false;
+
+                  return (
+                    <List.Item
+                      actions={[
+                        <Popconfirm
+                          key="delete"
+                          title="Delete alert?"
+                          onConfirm={() => deleteStockNotification(index)}
+                        >
+                          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                        </Popconfirm>,
+                      ]}
+                    >
+                      <List.Item.Meta
+                        title={
+                          <Space>
+                            <Typography.Text strong>{formatNotification(notification)}</Typography.Text>
+                            {isTriggered && <Tag color="red">Hit</Tag>}
+                          </Space>
+                        }
+                        description={`Target chart line: ${targetPrice ? formatCurrency(targetPrice) : '—'}`}
+                      />
+                    </List.Item>
+                  );
+                }}
+                style={{ background: '#0f1629', borderRadius: 8, border: '1px solid #1e2a3a', padding: '0 8px' }}
+              />
+            )}
+          </div>
+        )}
+      </Modal>
       <StockDetailDrawer
         symbol={drawerSymbol}
         open={!!drawerSymbol}

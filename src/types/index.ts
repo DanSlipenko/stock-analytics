@@ -18,6 +18,15 @@ export interface Transaction {
   percentSold: number;
 }
 
+export interface StockNotification {
+  _id?: string;
+  type: 'above' | 'below';
+  targetPrice?: number;
+  targetPercent?: number;
+  referencePrice: number;
+  createdAt?: string;
+}
+
 export interface CampaignStock {
   _id?: string;
   symbol: string;
@@ -25,7 +34,9 @@ export interface CampaignStock {
   buyPrice: number;
   buyDate: string;
   locationId: string;
+  isStarred?: boolean;
   transactions: Transaction[];
+  notifications?: StockNotification[];
 }
 
 export interface Campaign {

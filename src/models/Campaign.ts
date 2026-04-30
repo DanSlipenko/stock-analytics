@@ -10,13 +10,23 @@ const TransactionSchema = new Schema({
   percentSold: { type: Number, required: true },
 });
 
+const StockNotificationSchema = new Schema({
+  type:           { type: String, enum: ['above', 'below'], required: true },
+  targetPrice:    { type: Number },
+  targetPercent:  { type: Number },
+  referencePrice: { type: Number, required: true },
+  createdAt:      { type: Date, default: Date.now },
+});
+
 const CampaignStockSchema = new Schema({
   symbol:       { type: String, required: true },
   shares:       { type: Number, required: true },
   buyPrice:     { type: Number, required: true },
   buyDate:      { type: Date, default: Date.now },
   locationId:   { type: Schema.Types.ObjectId },
+  isStarred:    { type: Boolean, default: false },
   transactions: [TransactionSchema],
+  notifications: [StockNotificationSchema],
 });
 
 const MoneyLocationSchema = new Schema({
@@ -43,6 +53,7 @@ export interface ICampaign extends Document {
     buyPrice: number;
     buyDate: Date;
     locationId: mongoose.Types.ObjectId;
+    isStarred?: boolean;
     transactions: Array<{
       _id: mongoose.Types.ObjectId;
       type: string;
@@ -50,6 +61,14 @@ export interface ICampaign extends Document {
       price: number;
       date: Date;
       percentSold: number;
+    }>;
+    notifications?: Array<{
+      _id: mongoose.Types.ObjectId;
+      type: 'above' | 'below';
+      targetPrice?: number;
+      targetPercent?: number;
+      referencePrice: number;
+      createdAt: Date;
     }>;
   }>;
   createdAt: Date;

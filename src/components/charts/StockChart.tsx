@@ -7,6 +7,15 @@ import { StockCandle } from '@/types';
 type ChartTime = import('lightweight-charts').Time;
 type ChartMarker = import('lightweight-charts').SeriesMarker<ChartTime>;
 
+export type ChartAlertRule = {
+  id?: string;
+  type: 'above' | 'below';
+  targetPrice?: number;
+  targetPercent?: number;
+  referencePrice: number;
+  createdAt?: string;
+};
+
 interface StockChartProps {
   symbol: string;
   height?: number;
@@ -14,6 +23,7 @@ interface StockChartProps {
   activeRangeOverride?: TimeRange;
   chartType?: 'candlestick' | 'area';
   markers?: ChartMarker[];
+  alertRules?: ChartAlertRule[];
 }
 
 type TradeOverlayMarker = {
@@ -94,15 +104,77 @@ const getDisplayMarkers = (markers: ChartMarker[] | undefined, validTimes: Set<s
     } as ChartMarker;
   });
 
-export default function StockChart({ symbol, height = 400, hideToolbar = false, activeRangeOverride, chartType = 'candlestick', markers }: StockChartProps) {
+const getAlertTargetPrice = (rule: ChartAlertRule) => {
+  if (rule.targetPrice != null) return rule.targetPrice;
+  if (rule.targetPercent == null) return null;
+
+  const multiplier = rule.type === 'above'
+    ? 1 + rule.targetPercent / 100
+    : 1 - rule.targetPercent / 100;
+  const targetPrice = rule.referencePrice * multiplier;
+
+  return targetPrice > 0 ? targetPrice : null;
+};
+
+const getAlertLabel = (rule: ChartAlertRule, targetPrice: number) => {
+  const direction = rule.type === 'above' ? 'Above' : 'Below';
+  const target = rule.targetPrice != null
+    ? `$${targetPrice.toFixed(2)}`
+    : `${rule.targetPercent}%`;
+
+  return `${direction} ${target}`;
+};
+
+const getAlertTriggerMarkers = (
+  rules: ChartAlertRule[] | undefined,
+  candles: StockCandle[]
+): ChartMarker[] => {
+  if (!rules?.length || candles.length === 0) return [];
+
+  return rules.flatMap((rule) => {
+    const targetPrice = getAlertTargetPrice(rule);
+    if (targetPrice == null) return [];
+
+    const createdAtMs = rule.createdAt ? new Date(rule.createdAt).getTime() : NaN;
+    if (!Number.isFinite(createdAtMs)) return [];
+
+    const triggerCandle = candles.find((candle) => (
+      Number(candle.time) * 1000 >= createdAtMs
+      && (
+        rule.type === 'above'
+          ? candle.high >= targetPrice
+          : candle.low <= targetPrice
+      )
+    ));
+
+    if (!triggerCandle) return [];
+
+    const d = new Date(Number(triggerCandle.time) * 1000);
+    const timeStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+
+    return [{
+      time: timeStr as unknown as ChartTime,
+      position: rule.type === 'above' ? 'aboveBar' : 'belowBar',
+      color: rule.type === 'above' ? '#f59e0b' : '#ef4444',
+      shape: rule.type === 'above' ? 'arrowDown' : 'arrowUp',
+      text: getAlertLabel(rule, targetPrice),
+    } as ChartMarker];
+  });
+};
+
+export default function StockChart({ symbol, height = 400, hideToolbar = false, activeRangeOverride, chartType = 'candlestick', markers, alertRules }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof import('lightweight-charts').createChart> | null>(null);
   const seriesRef = useRef<import('lightweight-charts').ISeriesApi<'Candlestick'> | import('lightweight-charts').ISeriesApi<'Area'> | null>(null);
   const markersPluginRef = useRef<any>(null);
+  const priceLineRefs = useRef<any[]>([]);
   const dataTimesRef = useRef<Set<string>>(new Set());
+  const candlesRef = useRef<StockCandle[]>([]);
   const markersRef = useRef(markers);
+  const alertRulesRef = useRef(alertRules);
   const cleanupChartListenersRef = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
+  const [noData, setNoData] = useState(false);
   const [internalRange, setInternalRange] = useState<TimeRange>('1Y');
   const [tradeOverlays, setTradeOverlays] = useState<TradeOverlayMarker[]>([]);
   
@@ -131,6 +203,52 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
 
   const activeRange = activeRangeOverride || internalRange;
   markersRef.current = markers;
+  alertRulesRef.current = alertRules;
+
+  const resetChart = useCallback(() => {
+    cleanupChartListenersRef.current?.();
+    cleanupChartListenersRef.current = null;
+    if (chartRef.current) {
+      chartRef.current.remove();
+      chartRef.current = null;
+    }
+    seriesRef.current = null;
+    markersPluginRef.current = null;
+    priceLineRefs.current = [];
+    dataTimesRef.current = new Set();
+    candlesRef.current = [];
+    setTradeOverlays([]);
+  }, []);
+
+  const syncAlertPriceLines = useCallback(() => {
+    if (!seriesRef.current) return;
+
+    priceLineRefs.current.forEach((priceLine) => {
+      try {
+        seriesRef.current?.removePriceLine(priceLine);
+      } catch {
+        // Lightweight Charts can throw if the series was already disposed.
+      }
+    });
+    priceLineRefs.current = [];
+
+    alertRulesRef.current?.forEach((rule) => {
+      const targetPrice = getAlertTargetPrice(rule);
+      if (targetPrice == null || !seriesRef.current) return;
+
+      const color = rule.type === 'above' ? '#f59e0b' : '#ef4444';
+      const priceLine = seriesRef.current.createPriceLine({
+        price: targetPrice,
+        color,
+        lineWidth: 2,
+        lineStyle: 2,
+        axisLabelVisible: true,
+        title: getAlertLabel(rule, targetPrice),
+      });
+
+      priceLineRefs.current.push(priceLine);
+    });
+  }, []);
 
   const updateTradeOverlays = useCallback(() => {
     if (!chartRef.current || !seriesRef.current || dataTimesRef.current.size === 0) {
@@ -169,6 +287,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
     if (!containerRef.current) return;
 
     setLoading(true);
+    setNoData(false);
 
     const now = Math.floor(Date.now() / 1000);
     const rangeConfig = TIME_RANGES.find((r) => r.key === range)!;
@@ -181,18 +300,20 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
 
       if (!res.ok) throw new Error('Failed to fetch candles');
       const data = await res.json();
+      const candles: StockCandle[] = data.candles || [];
+
+      if (candles.length === 0) {
+        resetChart();
+        setNoData(true);
+        setLoading(false);
+        return;
+      }
 
       // Dynamic import for SSR safety
       const { createChart, ColorType, CrosshairMode, CandlestickSeries, AreaSeries, HistogramSeries, createSeriesMarkers } = await import('lightweight-charts');
 
       // Dispose old chart
-      cleanupChartListenersRef.current?.();
-      cleanupChartListenersRef.current = null;
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-        setTradeOverlays([]);
-      }
+      resetChart();
 
       const chart = createChart(containerRef.current, {
         width: containerRef.current.clientWidth,
@@ -227,7 +348,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
 
       chartRef.current = chart;
 
-      const candles: StockCandle[] = data.candles || [];
+      candlesRef.current = candles;
 
       let unsubscribeVisibleRange: (() => void) | null = null;
 
@@ -280,14 +401,19 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
 
         // Apply compact chart markers immediately if they exist.
         const validMarkers = getDisplayMarkers(markersRef.current, validTimes);
-        if (validMarkers.length > 0) {
+        const alertMarkers = getAlertTriggerMarkers(alertRulesRef.current, candles);
+        const chartMarkers = [...validMarkers, ...alertMarkers]
+          .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+
+        if (chartMarkers.length > 0) {
           try {
-            const markersPlugin = createSeriesMarkers(mainSeries as any, validMarkers);
+            const markersPlugin = createSeriesMarkers(mainSeries as any, chartMarkers);
             markersPluginRef.current = markersPlugin;
           } catch (e) {
             console.error('[StockChart] Markers set error:', e);
           }
         }
+        syncAlertPriceLines();
 
         // Volume series
         const volumeSeries = chart.addSeries(HistogramSeries, {
@@ -368,40 +494,37 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
       setLoading(false);
     } catch (error) {
       console.error('Chart load error:', error);
+      resetChart();
+      setNoData(true);
       setLoading(false);
     }
-  }, [symbol, height, chartType, updateTradeOverlays]);
+  }, [symbol, height, chartType, syncAlertPriceLines, updateTradeOverlays, resetChart]);
 
   useEffect(() => {
     loadChart(activeRange);
 
     return () => {
-      cleanupChartListenersRef.current?.();
-      cleanupChartListenersRef.current = null;
-      if (chartRef.current) {
-        chartRef.current.remove();
-        chartRef.current = null;
-        seriesRef.current = null;
-        markersPluginRef.current = null;
-        dataTimesRef.current = new Set();
-        setTradeOverlays([]);
-      }
+      resetChart();
     };
-  }, [activeRange, loadChart]);
+  }, [activeRange, loadChart, resetChart]);
 
   // Update markers without recreating the entire chart
   useEffect(() => {
     if (seriesRef.current && dataTimesRef.current.size > 0) {
       try {
         const validMarkers = getDisplayMarkers(markers, dataTimesRef.current);
+        const alertMarkers = getAlertTriggerMarkers(alertRules, candlesRef.current);
+        const chartMarkers = [...validMarkers, ...alertMarkers]
+          .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+        syncAlertPriceLines();
 
         if (markersPluginRef.current) {
-          markersPluginRef.current.setMarkers(validMarkers);
-        } else if (validMarkers.length > 0) {
+          markersPluginRef.current.setMarkers(chartMarkers);
+        } else if (chartMarkers.length > 0) {
           // Fallback if plugin wasn't created yet
           import('lightweight-charts').then(({ createSeriesMarkers }) => {
             if (seriesRef.current) {
-              markersPluginRef.current = createSeriesMarkers(seriesRef.current, validMarkers);
+              markersPluginRef.current = createSeriesMarkers(seriesRef.current, chartMarkers);
             }
           });
         }
@@ -412,7 +535,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
     } else {
       setTradeOverlays([]);
     }
-  }, [markers, updateTradeOverlays]);
+  }, [alertRules, markers, syncAlertPriceLines, updateTradeOverlays]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!tooltip.show) return;
@@ -454,7 +577,26 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
             <Spin size="large" />
           </div>
         )}
-        <div ref={containerRef} />
+        <div ref={containerRef} style={{ minHeight: noData ? height : undefined }} />
+        {noData && !loading && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            minHeight: height,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            color: '#64748b',
+            fontSize: 13,
+            textAlign: 'center',
+            padding: 24,
+          }}>
+            <span style={{ color: '#94a3b8', fontWeight: 700 }}>No chart data available</span>
+            <span>Check the symbol or choose a different result.</span>
+          </div>
+        )}
         {tradeOverlays.map((marker) => {
           const labelLeft = marker.x < 120 ? 12 : undefined;
           const labelRight = marker.x >= 120 ? 12 : undefined;

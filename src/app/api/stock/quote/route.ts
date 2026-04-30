@@ -59,6 +59,10 @@ export async function GET(request: NextRequest) {
 
     const data = await res.json();
 
+    if (!Number.isFinite(data.c) || data.c <= 0 || !data.t) {
+      return NextResponse.json({ error: 'No quote data' }, { status: 404 });
+    }
+
     return NextResponse.json({
       currentPrice: data.c,
       change: data.d,

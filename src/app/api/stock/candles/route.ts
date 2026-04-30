@@ -95,10 +95,18 @@ export async function GET(request: NextRequest) {
     );
 
     if (!res.ok) {
+      if (res.status === 404) {
+        return NextResponse.json({ candles: [], status: 'no_data' });
+      }
+
       throw new Error(`Yahoo Finance API error: ${res.status}`);
     }
 
     const data = await res.json();
+    if (data.chart?.error) {
+      return NextResponse.json({ candles: [], status: 'no_data' });
+    }
+
     const result = data.chart?.result?.[0];
 
     if (!result || !result.timestamp) {

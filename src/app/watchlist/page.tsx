@@ -1,13 +1,18 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Card, Button, Table, Tag, Empty, Spin, Modal, Form, InputNumber, Input, message, Popconfirm } from 'antd';
-import { PlusOutlined, EyeOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Button, Table, Tag, Empty, Spin, Modal, Form, InputNumber, Input, message, Popconfirm, Row, Col, Segmented, Space } from 'antd';
+import { PlusOutlined, EyeOutlined, DeleteOutlined, UnorderedListOutlined, AppstoreOutlined, LineChartOutlined } from '@ant-design/icons';
 import { useStore } from '@/context/StoreContext';
 import { useStockQuotes } from '@/hooks/useStockQuote';
 import SymbolSearch from '@/components/shared/SymbolSearch';
 import StockDetailDrawer from '@/components/charts/StockDetailDrawer';
+import StockChart, { ChartAlertRule, TimeRange, TIME_RANGES } from '@/components/charts/StockChart';
 import PnLDisplay from '@/components/shared/PnLDisplay';
+import { WatchlistItem } from '@/types';
+
+const hasValidQuote = (quote?: { currentPrice: number }): quote is { currentPrice: number } =>
+  Boolean(quote && Number.isFinite(quote.currentPrice) && quote.currentPrice > 0);
 
 export default function WatchlistPage() {
   const { state, dispatch } = useStore();
@@ -16,6 +21,8 @@ export default function WatchlistPage() {
   const [loading, setLoading] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState('');
   const [drawerSymbol, setDrawerSymbol] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'candlestick' | 'area'>('list');
+  const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>('1Y');
 
   const symbols = useMemo(() => state.watchlist.map((w) => w.symbol), [state.watchlist]);
   const { quotes } = useStockQuotes(symbols);
@@ -62,7 +69,7 @@ export default function WatchlistPage() {
       title: 'Current Price', key: 'current',
       render: (_: unknown, record: { symbol: string }) => {
         const q = quotes[record.symbol];
-        return q ? `$${q.currentPrice.toFixed(2)}` : '—';
+        return hasValidQuote(q) ? `$${q.currentPrice.toFixed(2)}` : '—';
       },
       align: 'right' as const,
     },
@@ -75,7 +82,7 @@ export default function WatchlistPage() {
       title: 'Distance', key: 'distance',
       render: (_: unknown, record: { symbol: string; targetBuyPrice: number }) => {
         const q = quotes[record.symbol];
-        if (!q) return '—';
+        if (!hasValidQuote(q)) return '—';
         const dist = ((q.currentPrice - record.targetBuyPrice) / q.currentPrice) * 100;
         const atTarget = q.currentPrice <= record.targetBuyPrice;
         return atTarget
@@ -109,16 +116,97 @@ export default function WatchlistPage() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModal(true)}>Add to Watchlist</Button>
         </div>
       ) : (
-        <Card bordered={false}>
-          <Table
-            dataSource={state.watchlist.map((w) => ({ ...w, key: w._id }))}
-            columns={columns}
-            pagination={false}
-            rowClassName={(record) => {
-              const q = quotes[record.symbol];
-              return q && q.currentPrice <= record.targetBuyPrice ? 'gain' : '';
-            }}
-          />
+        <Card
+          bordered={false}
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 16 }}>
+              <span style={{ color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                Stocks
+                {viewMode !== 'list' && (
+                  <div className="time-range-group">
+                    {TIME_RANGES.map((r) => (
+                      <button
+                        key={r.key}
+                        className={`time-range-btn ${globalTimeRange === r.key ? 'active' : ''}`}
+                        onClick={() => setGlobalTimeRange(r.key)}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </span>
+              <Segmented
+                options={[
+                  { value: 'list', icon: <UnorderedListOutlined /> },
+                  { value: 'candlestick', icon: <AppstoreOutlined /> },
+                  { value: 'area', icon: <LineChartOutlined /> },
+                ]}
+                value={viewMode}
+                onChange={(v) => setViewMode(v as 'list' | 'candlestick' | 'area')}
+              />
+            </div>
+          }
+        >
+          {viewMode === 'list' ? (
+            <Table
+              dataSource={state.watchlist.map((w) => ({ ...w, key: w._id }))}
+              columns={columns}
+              pagination={false}
+              rowClassName={(record) => {
+                const q = quotes[record.symbol];
+                return hasValidQuote(q) && q.currentPrice <= record.targetBuyPrice ? 'gain' : '';
+              }}
+            />
+          ) : (
+            <Row gutter={[24, 24]}>
+              {state.watchlist.map((item: WatchlistItem) => {
+                const q = quotes[item.symbol];
+                const validQuote = hasValidQuote(q);
+                const distance = validQuote
+                  ? ((q.currentPrice - item.targetBuyPrice) / q.currentPrice) * 100
+                  : null;
+                const alertRules: ChartAlertRule[] = [{
+                  type: 'below',
+                  targetPrice: item.targetBuyPrice,
+                  referencePrice: validQuote ? q.currentPrice : item.targetBuyPrice,
+                  createdAt: item.createdAt,
+                }];
+
+                return (
+                  <Col key={item._id || item.symbol} xs={24} lg={12}>
+                    <div style={{ background: '#0f1629', borderRadius: 12, border: '1px solid #1e2a3a', overflow: 'hidden' }}>
+                      <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e2a3a', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                        <Space size="small" wrap>
+                          <Button type="link" style={{ fontWeight: 700, padding: 0, fontSize: 16 }} onClick={() => setDrawerSymbol(item.symbol)}>
+                            {item.symbol}
+                          </Button>
+                          {validQuote && q.currentPrice <= item.targetBuyPrice && <Tag color="green">At Target</Tag>}
+                        </Space>
+                        <Space size="small" wrap>
+                          <span style={{ color: '#94a3b8', fontSize: 12 }}>Target ${item.targetBuyPrice.toFixed(2)}</span>
+                          {distance != null && (
+                            <PnLDisplay value={-distance} percentage={-distance} showArrow={false} size="small" prefix="" />
+                          )}
+                          <Popconfirm title="Remove from watchlist?" onConfirm={() => item._id && handleDelete(item._id)}>
+                            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+                          </Popconfirm>
+                        </Space>
+                      </div>
+                      <StockChart
+                        symbol={item.symbol}
+                        height={260}
+                        hideToolbar
+                        activeRangeOverride={globalTimeRange}
+                        chartType={viewMode === 'area' ? 'area' : 'candlestick'}
+                        alertRules={alertRules}
+                      />
+                    </div>
+                  </Col>
+                );
+              })}
+            </Row>
+          )}
         </Card>
       )}
 
