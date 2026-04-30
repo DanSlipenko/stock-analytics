@@ -2,17 +2,20 @@
 
 import React, { useState, useMemo } from "react";
 import { Card, Button, Row, Col, Tag, Statistic, Empty, Spin, Popconfirm, message } from "antd";
-import { PlusOutlined, DeleteOutlined, FolderOutlined, RightOutlined } from "@ant-design/icons";
+import { PlusOutlined, DeleteOutlined, EditOutlined, FolderOutlined, RightOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
 import CreateCampaignModal from "@/components/campaigns/CreateCampaignModal";
 import PnLDisplay from "@/components/shared/PnLDisplay";
+import { calculateCampaignStats } from "@/lib/campaignStats";
+import { Campaign } from "@/types";
 
 export default function CampaignsPage() {
   const { state, dispatch } = useStore();
   const router = useRouter();
   const [createModal, setCreateModal] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
 
   // Collect all symbols
   const allSymbols = useMemo(() => {
@@ -62,24 +65,7 @@ export default function CampaignsPage() {
         </div>
       : <Row gutter={[20, 20]}>
           {state.campaigns.map((campaign) => {
-            let invested = 0;
-            let currentVal = 0;
-            let realized = 0;
-
-            campaign.stocks.forEach((stock) => {
-              const soldShares = stock.transactions.reduce((sum, t) => sum + t.shares, 0);
-              const remaining = stock.shares - soldShares;
-              const curPrice = quotes[stock.symbol]?.currentPrice || stock.buyPrice;
-
-              invested += stock.shares * stock.buyPrice;
-              currentVal += remaining * curPrice;
-              stock.transactions.forEach((t) => {
-                realized += t.shares * (t.price - stock.buyPrice);
-              });
-            });
-
-            const pnl = currentVal + realized - invested;
-            const pnlPercent = invested > 0 ? (pnl / invested) * 100 : 0;
+            const stats = calculateCampaignStats(campaign, quotes);
 
             return (
               <Col xs={24} md={12} lg={8} key={campaign._id}>
@@ -88,6 +74,17 @@ export default function CampaignsPage() {
                   hoverable
                   onClick={() => router.push(`/campaigns/${campaign._id}`)}
                   actions={[
+                    <Button
+                      key="edit"
+                      type="text"
+                      icon={<EditOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingCampaign(campaign);
+                      }}
+                      size="small">
+                      Edit
+                    </Button>,
                     <Popconfirm
                       key="delete"
                       title="Delete this campaign?"
@@ -120,7 +117,7 @@ export default function CampaignsPage() {
                     <Col span={12}>
                       <Statistic
                         title={<span style={{ color: "#64748b", fontSize: 11 }}>Invested</span>}
-                        value={invested}
+                        value={stats.invested}
                         prefix="$"
                         precision={0}
                         valueStyle={{ fontSize: 16, color: "#e2e8f0" }}
@@ -129,7 +126,7 @@ export default function CampaignsPage() {
                     <Col span={12}>
                       <div>
                         <div style={{ color: "#64748b", fontSize: 11, marginBottom: 8 }}>P&L</div>
-                        <PnLDisplay value={pnl} percentage={pnlPercent} size="small" />
+                        <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="small" />
                       </div>
                     </Col>
                   </Row>
@@ -141,6 +138,7 @@ export default function CampaignsPage() {
       }
 
       <CreateCampaignModal open={createModal} onClose={() => setCreateModal(false)} />
+      <CreateCampaignModal open={Boolean(editingCampaign)} onClose={() => setEditingCampaign(null)} campaign={editingCampaign} />
     </div>
   );
 }

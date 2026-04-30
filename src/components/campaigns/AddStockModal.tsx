@@ -1,22 +1,24 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { Modal, Form, InputNumber, DatePicker, Select, Space, Button, message } from "antd";
+import React, { useState, useMemo, useEffect } from "react";
+import { Modal, Form, Input, InputNumber, DatePicker, Select, Space, Button, message } from "antd";
 import SymbolSearch from "../shared/SymbolSearch";
-import { Campaign } from "@/types";
+import { Campaign, CampaignStock } from "@/types";
 import { useStore } from "@/context/StoreContext";
 
 interface AddStockModalProps {
   open: boolean;
   onClose: () => void;
   campaign: Campaign;
+  stock?: CampaignStock | null;
 }
 
-export default function AddStockModal({ open, onClose, campaign }: AddStockModalProps) {
+export default function AddStockModal({ open, onClose, campaign, stock }: AddStockModalProps) {
   const [form] = Form.useForm();
   const { dispatch } = useStore();
   const [loading, setLoading] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState("");
+  const isAddingToExistingStock = Boolean(stock);
 
   const locationOptions = useMemo(() => {
     return campaign.moneyLocations.map((loc) => ({
@@ -24,6 +26,18 @@ export default function AddStockModal({ open, onClose, campaign }: AddStockModal
       value: loc._id,
     }));
   }, [campaign.moneyLocations]);
+
+  useEffect(() => {
+    if (open && stock) {
+      setSelectedSymbol(stock.symbol);
+      form.setFieldsValue({ locationId: stock.locationId || undefined });
+    }
+
+    if (!open) {
+      form.resetFields();
+      setSelectedSymbol("");
+    }
+  }, [form, open, stock]);
 
   const handleSubmit = async () => {
     try {
@@ -59,7 +73,11 @@ export default function AddStockModal({ open, onClose, campaign }: AddStockModal
         form.resetFields();
         setSelectedSymbol("");
         onClose();
-        message.success(`Added ${selectedSymbol} to campaign`);
+        message.success(
+          isAddingToExistingStock
+            ? `Added ${values.shares} more shares of ${selectedSymbol}`
+            : `Added ${selectedSymbol} to campaign`
+        );
       }
     } catch (e) {
       console.error("Add stock error:", e);
@@ -70,19 +88,24 @@ export default function AddStockModal({ open, onClose, campaign }: AddStockModal
 
   return (
     <Modal
-      title={<span style={{ fontSize: 18, fontWeight: 600 }}>Add Asset</span>}
+      title={<span style={{ fontSize: 18, fontWeight: 600 }}>{stock ? `Buy More ${stock.symbol}` : "Add Asset"}</span>}
       open={open}
       onCancel={onClose}
       footer={null}
       width={480}
       destroyOnClose>
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-        <Form.Item label="Symbol" required>
-          <SymbolSearch
-            onSelect={(symbol) => setSelectedSymbol(symbol)}
-            placeholder="Search for a stock or crypto (e.g. AAPL, BINANCE:BTCUSDT)..."
-          />
-        </Form.Item>
+        {stock ?
+          <Form.Item label="Symbol">
+            <Input value={stock.symbol} disabled size="large" />
+          </Form.Item>
+        : <Form.Item label="Symbol" required>
+            <SymbolSearch
+              onSelect={(symbol) => setSelectedSymbol(symbol)}
+              placeholder="Search for a stock or crypto (e.g. AAPL, BINANCE:BTCUSDT)..."
+            />
+          </Form.Item>
+        }
 
         <Form.Item name="shares" label="Number of Shares" rules={[{ required: true, message: "Enter number of shares" }]}>
           <InputNumber placeholder="e.g. 10" style={{ width: "100%" }} size="large" min={0.0001} step={1} />
@@ -105,7 +128,7 @@ export default function AddStockModal({ open, onClose, campaign }: AddStockModal
         <Space style={{ width: "100%", justifyContent: "flex-end", marginTop: 8 }}>
           <Button onClick={onClose}>Cancel</Button>
           <Button type="primary" onClick={handleSubmit} loading={loading}>
-            Add Stock
+            {stock ? "Add Purchase" : "Add Stock"}
           </Button>
         </Space>
       </Form>

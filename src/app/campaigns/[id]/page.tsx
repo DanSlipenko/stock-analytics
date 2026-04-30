@@ -21,6 +21,7 @@ import EditTransactionModal from '@/components/campaigns/EditTransactionModal';
 import StockChart, { TimeRange, TIME_RANGES } from '@/components/charts/StockChart';
 import StockDetailDrawer from '@/components/charts/StockDetailDrawer';
 import PnLDisplay from '@/components/shared/PnLDisplay';
+import { calculateCampaignStats } from '@/lib/campaignStats';
 
 export default function CampaignDetailPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function CampaignDetailPage() {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [addStockModal, setAddStockModal] = useState(false);
+  const [buyMoreStock, setBuyMoreStock] = useState<CampaignStock | null>(null);
   const [sellStock, setSellStock] = useState<CampaignStock | null>(null);
   const [editStock, setEditStock] = useState<CampaignStock | null>(null);
   const [editTransaction, setEditTransaction] = useState<{ stock: CampaignStock; transaction: any } | null>(null);
@@ -116,30 +118,7 @@ export default function CampaignDetailPage() {
 
   // Calculate campaign stats
   const stats = useMemo(() => {
-    if (!campaign) return { invested: 0, currentValue: 0, realized: 0, pnl: 0, pnlPercent: 0 };
-
-    let invested = 0;
-    let currentValue = 0;
-    let realized = 0;
-    let pnl = 0;
-
-    campaign.stocks.forEach((stock) => {
-      const soldShares = stock.transactions.reduce((sum, t) => sum + t.shares, 0);
-      const remaining = stock.shares - soldShares;
-      const curPrice = quotes[stock.symbol]?.currentPrice || stock.buyPrice;
-
-      const unrealizedStock = remaining * (curPrice - stock.buyPrice);
-      const realizedStock = stock.transactions.reduce((sum, t) => sum + t.shares * (t.price - stock.buyPrice), 0);
-
-      invested += remaining * stock.buyPrice; // Cost basis of current holdings
-      currentValue += remaining * curPrice;   // Market value of current holdings
-      realized += realizedStock;
-      pnl += unrealizedStock + realizedStock;
-    });
-
-    const pnlPercent = invested > 0 ? (pnl / (invested + Math.abs(realized))) * 100 : 0; // Simplified ROI
-
-    return { invested, currentValue, realized, pnl, pnlPercent };
+    return campaign ? calculateCampaignStats(campaign, quotes) : { invested: 0, currentValue: 0, realized: 0, pnl: 0, pnlPercent: 0 };
   }, [campaign, quotes]);
 
   if (loading) {
@@ -251,6 +230,9 @@ export default function CampaignDetailPage() {
                 Sell
               </Button>
             )}
+            <Button size="small" onClick={(e) => { e.stopPropagation(); setBuyMoreStock(record); }}>
+              Buy More
+            </Button>
             <Button size="small" type="text" onClick={(e) => { e.stopPropagation(); setEditStock(record); }}>
               Edit
             </Button>
@@ -264,7 +246,7 @@ export default function CampaignDetailPage() {
           </Space>
         );
       },
-      width: 140,
+      width: 220,
     },
   ];
 
@@ -482,7 +464,7 @@ export default function CampaignDetailPage() {
             expandable={{
               expandedRowRender: (record: CampaignStock) => (
                 <div style={{ padding: '8px 0' }}>
-                  <Divider orientation="left" style={{ color: '#64748b', fontSize: 12, margin: '0 0 12px 0' }}>
+                  <Divider titlePlacement="start" style={{ color: '#64748b', fontSize: 12, margin: '0 0 12px 0' }}>
                     Transaction History
                   </Divider>
                   {record.transactions.length === 0 ? (
@@ -568,6 +550,7 @@ export default function CampaignDetailPage() {
                     <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e2a3a', display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ fontWeight: 700, fontSize: 16, color: '#e2e8f0' }}>{stock.symbol}</span>
                       <Space size="small">
+                        <Button size="small" type="text" onClick={() => setBuyMoreStock(stock)}>Buy More</Button>
                         <Button size="small" type="text" onClick={() => setEditStock(stock)}>Edit</Button>
                         <Button size="small" type="text" onClick={() => setSellStock(stock)}>Sell</Button>
                       </Space>
@@ -590,9 +573,13 @@ export default function CampaignDetailPage() {
 
       {/* Modals & Drawer */}
       <AddStockModal
-        open={addStockModal}
-        onClose={() => setAddStockModal(false)}
+        open={addStockModal || !!buyMoreStock}
+        onClose={() => {
+          setAddStockModal(false);
+          setBuyMoreStock(null);
+        }}
         campaign={campaign}
+        stock={buyMoreStock}
       />
       <SellStockModal
         open={!!sellStock}

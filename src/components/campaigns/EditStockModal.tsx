@@ -109,7 +109,7 @@ export default function EditStockModal({ open, onClose, campaign, stock, onEditT
 
         {stock.transactions && stock.transactions.length > 0 && (
           <>
-            <Divider orientation="left" style={{ margin: '24px 0 12px' }}>
+            <Divider titlePlacement="start" style={{ margin: '24px 0 12px' }}>
               <span style={{ fontSize: 14, color: '#64748b' }}>Sell Transactions</span>
             </Divider>
             <List

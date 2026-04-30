@@ -15,6 +15,18 @@ import { useStockQuotes } from '@/hooks/useStockQuote';
 import PnLDisplay from '@/components/shared/PnLDisplay';
 import StockDetailDrawer from '@/components/charts/StockDetailDrawer';
 import { useRouter } from 'next/navigation';
+import { calculateCampaignStats } from '@/lib/campaignStats';
+
+interface CampaignTableRow {
+  key: string;
+  name: string;
+  stocks: number;
+  invested: number;
+  currentValue: number;
+  realizedGain: number;
+  pnl: number;
+  pnlPercent: number;
+}
 
 export default function DashboardPage() {
   const { state } = useStore();
@@ -32,76 +44,38 @@ export default function DashboardPage() {
 
   // Calculate portfolio-wide stats
   const stats = useMemo(() => {
-    let totalInvested = 0;
-    let totalCurrentValue = 0;
-    let totalRealizedGain = 0;
-
-    state.campaigns.forEach((campaign) => {
-      campaign.stocks.forEach((stock) => {
-        const soldShares = stock.transactions.reduce((sum, t) => sum + t.shares, 0);
-        const remainingShares = stock.shares - soldShares;
-        const currentPrice = quotes[stock.symbol]?.currentPrice || stock.buyPrice;
-
-        // Invested = original shares * buy price
-        totalInvested += stock.shares * stock.buyPrice;
-
-        // Current value of remaining shares
-        totalCurrentValue += remainingShares * currentPrice;
-
-        // Realized gain from sells
-        stock.transactions.forEach((t) => {
-          totalRealizedGain += t.shares * (t.price - stock.buyPrice);
-        });
-      });
-    });
-
-    const unrealizedGain = totalCurrentValue - (totalInvested - state.campaigns.reduce((sum, c) =>
-      sum + c.stocks.reduce((s2, st) =>
-        s2 + st.transactions.reduce((s3, t) => s3 + t.shares * st.buyPrice, 0), 0), 0));
-
-    const totalPnL = totalCurrentValue + totalRealizedGain - totalInvested;
-    const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalInvested) * 100 : 0;
+    const campaignStats = state.campaigns.map((campaign) => calculateCampaignStats(campaign, quotes));
+    const totalInvested = campaignStats.reduce((sum, stat) => sum + stat.invested, 0);
+    const totalCurrentValue = campaignStats.reduce((sum, stat) => sum + stat.currentValue, 0);
+    const totalRealizedGain = campaignStats.reduce((sum, stat) => sum + stat.realized, 0);
+    const totalPnL = campaignStats.reduce((sum, stat) => sum + stat.pnl, 0);
+    const totalPnLBasis = totalInvested + Math.abs(totalRealizedGain);
+    const totalPnLPercent = totalInvested > 0 ? (totalPnL / totalPnLBasis) * 100 : 0;
 
     return {
       totalInvested,
       totalCurrentValue,
       totalRealizedGain,
-      unrealizedGain: totalCurrentValue - (totalInvested - totalRealizedGain + totalRealizedGain - totalRealizedGain),
+      unrealizedGain: totalCurrentValue - totalInvested,
       totalPnL,
       totalPnLPercent,
     };
   }, [state.campaigns, quotes]);
 
   // Campaign table data
-  const campaignData = useMemo(() => {
+  const campaignData = useMemo<CampaignTableRow[]>(() => {
     return state.campaigns.map((campaign) => {
-      let invested = 0;
-      let currentVal = 0;
-      let realized = 0;
-
-      campaign.stocks.forEach((stock) => {
-        const soldShares = stock.transactions.reduce((sum, t) => sum + t.shares, 0);
-        const remaining = stock.shares - soldShares;
-        const curPrice = quotes[stock.symbol]?.currentPrice || stock.buyPrice;
-
-        invested += stock.shares * stock.buyPrice;
-        currentVal += remaining * curPrice;
-        stock.transactions.forEach((t) => {
-          realized += t.shares * (t.price - stock.buyPrice);
-        });
-      });
-
-      const pnl = currentVal + realized - invested;
+      const campaignStats = calculateCampaignStats(campaign, quotes);
 
       return {
-        key: campaign._id,
+        key: campaign._id ?? campaign.name,
         name: campaign.name,
         stocks: campaign.stocks.length,
-        invested,
-        currentValue: currentVal,
-        realizedGain: realized,
-        pnl,
-        pnlPercent: invested > 0 ? (pnl / invested) * 100 : 0,
+        invested: campaignStats.invested,
+        currentValue: campaignStats.currentValue,
+        realizedGain: campaignStats.realized,
+        pnl: campaignStats.pnl,
+        pnlPercent: campaignStats.pnlPercent,
       };
     });
   }, [state.campaigns, quotes]);
@@ -218,7 +192,7 @@ export default function DashboardPage() {
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         ) : (
-          <Table
+          <Table<CampaignTableRow>
             dataSource={campaignData}
             pagination={false}
             onRow={(record) => ({

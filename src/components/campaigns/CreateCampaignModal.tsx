@@ -1,39 +1,48 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { Modal, Form, Input, Button, Space, Select, InputNumber, Divider, DatePicker } from 'antd';
-import { PlusOutlined, DeleteOutlined, BankOutlined } from '@ant-design/icons';
-import { useStore } from '@/context/StoreContext';
-import dayjs from 'dayjs';
+import React, { useEffect, useState } from "react";
+import { Modal, Form, Input, Button, Space, Select, InputNumber, Divider, DatePicker } from "antd";
+import { PlusOutlined, DeleteOutlined, BankOutlined } from "@ant-design/icons";
+import { useStore } from "@/context/StoreContext";
+import { Campaign, MoneyLocation } from "@/types";
+import dayjs from "dayjs";
 
 interface CreateCampaignModalProps {
   open: boolean;
   onClose: () => void;
+  campaign?: Campaign | null;
 }
 
-interface LocationInput {
-  name: string;
-  type: string;
-  allocatedAmount: number;
-}
+type LocationInput = MoneyLocation;
 
-export default function CreateCampaignModal({ open, onClose }: CreateCampaignModalProps) {
+export default function CreateCampaignModal({ open, onClose, campaign }: CreateCampaignModalProps) {
   const [form] = Form.useForm();
   const { dispatch } = useStore();
   const [loading, setLoading] = useState(false);
   const [locations, setLocations] = useState<LocationInput[]>([]);
+  const isEditing = Boolean(campaign?._id);
+
+  useEffect(() => {
+    if (!open) return;
+
+    form.setFieldsValue({
+      name: campaign?.name ?? "",
+      startDate: campaign?.startDate ? dayjs(campaign.startDate) : dayjs(),
+    });
+    setLocations(campaign?.moneyLocations ?? []);
+  }, [campaign, form, open]);
 
   const addLocation = () => {
-    setLocations([...locations, { name: '', type: 'Fidelity Dan', allocatedAmount: 0 }]);
+    setLocations([...locations, { name: "", type: "Fidelity Dan", allocatedAmount: 0 }]);
   };
 
   const removeLocation = (index: number) => {
     setLocations(locations.filter((_, i) => i !== index));
   };
 
-  const updateLocation = (index: number, field: keyof LocationInput, value: string | number) => {
+  const updateLocation = <K extends keyof LocationInput>(index: number, field: K, value: LocationInput[K]) => {
     const updated = [...locations];
-    (updated[index] as Record<string, string | number>)[field] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setLocations(updated);
   };
 
@@ -42,9 +51,9 @@ export default function CreateCampaignModal({ open, onClose }: CreateCampaignMod
       const values = await form.validateFields();
       setLoading(true);
 
-      const res = await fetch('/api/campaigns', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(isEditing ? `/api/campaigns/${campaign?._id}` : "/api/campaigns", {
+        method: isEditing ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: values.name,
           startDate: values.startDate ? values.startDate.toISOString() : new Date().toISOString(),
@@ -53,14 +62,14 @@ export default function CreateCampaignModal({ open, onClose }: CreateCampaignMod
       });
 
       if (res.ok) {
-        const campaign = await res.json();
-        dispatch({ type: 'ADD_CAMPAIGN', payload: campaign });
+        const updatedCampaign = await res.json();
+        dispatch({ type: isEditing ? "UPDATE_CAMPAIGN" : "ADD_CAMPAIGN", payload: updatedCampaign });
         form.resetFields();
         setLocations([]);
         onClose();
       }
     } catch (e) {
-      console.error('Create campaign error:', e);
+      console.error(`${isEditing ? "Update" : "Create"} campaign error:`, e);
     } finally {
       setLoading(false);
     }
@@ -68,7 +77,7 @@ export default function CreateCampaignModal({ open, onClose }: CreateCampaignMod
 
   return (
     <Modal
-      title={<span style={{ fontSize: 18, fontWeight: 600 }}>Create New Campaign</span>}
+      title={<span style={{ fontSize: 18, fontWeight: 600 }}>{isEditing ? "Edit Campaign" : "Create New Campaign"}</span>}
       open={open}
       onCancel={onClose}
       footer={null}
@@ -92,7 +101,7 @@ export default function CreateCampaignModal({ open, onClose }: CreateCampaignMod
           <DatePicker size="large" style={{ width: '100%' }} />
         </Form.Item>
 
-        <Divider orientation="left" style={{ color: '#94a3b8', fontSize: 13 }}>
+        <Divider titlePlacement="start" style={{ color: '#94a3b8', fontSize: 13 }}>
           <BankOutlined /> Money Locations
         </Divider>
 
@@ -112,30 +121,30 @@ export default function CreateCampaignModal({ open, onClose }: CreateCampaignMod
             <Input
               placeholder="Name (e.g. Fidelity)"
               value={loc.name}
-              onChange={(e) => updateLocation(i, 'name', e.target.value)}
+              onChange={(e) => updateLocation(i, "name", e.target.value)}
               style={{ flex: 2 }}
             />
             <Select
               value={loc.type}
-              onChange={(v) => updateLocation(i, 'type', v)}
+              onChange={(v) => updateLocation(i, "type", v)}
               style={{ flex: 1 }}
               options={[
-                { label: 'PayPal', value: 'PayPal' },
-                { label: 'Kraken', value: 'Kraken' },
-                { label: 'Fidelity Roth Clara', value: 'Fidelity Roth Clara' },
-                { label: 'Fidelity Roth Dan', value: 'Fidelity Roth Dan' },
-                { label: 'Fidelity Dan', value: 'Fidelity Dan' },
-                { label: 'Charles Schwab', value: 'Charles Schwab' },
+                { label: "PayPal", value: "PayPal" },
+                { label: "Kraken", value: "Kraken" },
+                { label: "Fidelity Roth Clara", value: "Fidelity Roth Clara" },
+                { label: "Fidelity Roth Dan", value: "Fidelity Roth Dan" },
+                { label: "Fidelity Dan", value: "Fidelity Dan" },
+                { label: "Charles Schwab", value: "Charles Schwab" },
               ]}
             />
             <InputNumber
               placeholder="Amount"
               value={loc.allocatedAmount}
-              onChange={(v) => updateLocation(i, 'allocatedAmount', v || 0)}
+              onChange={(v) => updateLocation(i, "allocatedAmount", v || 0)}
               prefix="$"
               style={{ flex: 1 }}
               min={0}
-              formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
             />
             <Button
               type="text"
@@ -159,7 +168,7 @@ export default function CreateCampaignModal({ open, onClose }: CreateCampaignMod
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           <Button onClick={onClose}>Cancel</Button>
           <Button type="primary" onClick={handleSubmit} loading={loading}>
-            Create Campaign
+            {isEditing ? "Save Changes" : "Create Campaign"}
           </Button>
         </Space>
       </Form>
