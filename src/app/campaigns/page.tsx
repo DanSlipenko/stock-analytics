@@ -9,7 +9,57 @@ import { useStockQuotes } from "@/hooks/useStockQuote";
 import CreateCampaignModal from "@/components/campaigns/CreateCampaignModal";
 import PnLDisplay from "@/components/shared/PnLDisplay";
 import { calculateCampaignStats } from "@/lib/campaignStats";
-import { Campaign } from "@/types";
+import { Campaign, CampaignStock, StockQuote } from "@/types";
+
+type DayChangeStats = {
+  value: number;
+  percentage: number;
+  basis: number;
+};
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+const getSoldShares = (stock: CampaignStock) => stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
+
+const getRemainingShares = (stock: CampaignStock) => Math.max(stock.shares - getSoldShares(stock), 0);
+
+const getQuoteDayChange = (quote?: StockQuote) => {
+  if (!quote) return null;
+
+  const change =
+    isFiniteNumber(quote.change) ? quote.change
+    : isFiniteNumber(quote.currentPrice) && isFiniteNumber(quote.previousClose) ? quote.currentPrice - quote.previousClose
+    : null;
+
+  if (change == null) return null;
+
+  return {
+    change,
+    previousClose: isFiniteNumber(quote.previousClose) ? quote.previousClose : null,
+  };
+};
+
+const calculateCampaignDayChange = (campaign: Campaign, quotes: Record<string, StockQuote>): DayChangeStats => {
+  const totals = campaign.stocks.reduce(
+    (sum, stock) => {
+      const remainingShares = getRemainingShares(stock);
+      const quoteChange = getQuoteDayChange(quotes[stock.symbol]);
+      if (remainingShares <= 0 || !quoteChange) return sum;
+
+      return {
+        value: sum.value + remainingShares * quoteChange.change,
+        basis: sum.basis + (quoteChange.previousClose ? remainingShares * quoteChange.previousClose : 0),
+      };
+    },
+    { value: 0, basis: 0 },
+  );
+
+  return {
+    value: totals.value,
+    basis: totals.basis,
+    percentage: totals.basis > 0 ? (totals.value / totals.basis) * 100 : 0,
+  };
+};
 
 export default function CampaignsPage() {
   const { state, dispatch } = useStore();
@@ -30,14 +80,23 @@ export default function CampaignsPage() {
     return state.campaigns.reduce(
       (totals, campaign) => {
         const stats = calculateCampaignStats(campaign, quotes);
+        const dayChange = calculateCampaignDayChange(campaign, quotes);
 
         return {
           totalCurrentValue: totals.totalCurrentValue + stats.currentValue,
+          totalPnl: totals.totalPnl + stats.pnl,
+          totalPnlBasis: totals.totalPnlBasis + stats.invested + Math.abs(stats.realized),
+          dayChange: totals.dayChange + dayChange.value,
+          dayChangeBasis: totals.dayChangeBasis + dayChange.basis,
         };
       },
-      { totalCurrentValue: 0 }
+      { totalCurrentValue: 0, totalPnl: 0, totalPnlBasis: 0, dayChange: 0, dayChangeBasis: 0 },
     );
   }, [state.campaigns, quotes]);
+
+  const portfolioPnlPercent = portfolioStats.totalPnlBasis > 0 ? (portfolioStats.totalPnl / portfolioStats.totalPnlBasis) * 100 : 0;
+  const portfolioDayChangePercent =
+    portfolioStats.dayChangeBasis > 0 ? (portfolioStats.dayChange / portfolioStats.dayChangeBasis) * 100 : 0;
 
   const handleDelete = async (id: string) => {
     try {
@@ -88,11 +147,20 @@ export default function CampaignsPage() {
                 formatter={(value) => `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
               />
             </Card>
+            <Card className="stat-card" bordered={false}>
+              <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Avg Day Change</div>
+              <PnLDisplay value={portfolioStats.dayChange} percentage={portfolioDayChangePercent} size="large" />
+            </Card>
+            <Card className="stat-card" bordered={false}>
+              <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total P&L</div>
+              <PnLDisplay value={portfolioStats.totalPnl} percentage={portfolioPnlPercent} size="large" />
+            </Card>
           </div>
 
           <Row gutter={[20, 20]}>
             {state.campaigns.map((campaign) => {
               const stats = calculateCampaignStats(campaign, quotes);
+              const dayChange = calculateCampaignDayChange(campaign, quotes);
 
               return (
                 <Col xs={24} lg={12} xl={8} key={campaign._id}>
@@ -174,6 +242,12 @@ export default function CampaignsPage() {
                         <div>
                           <div className="campaign-stat-label">P&L</div>
                           <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="small" />
+                        </div>
+                      </div>
+                      <div className="campaign-stat campaign-stat-pnl">
+                        <div>
+                          <div className="campaign-stat-label">Day Change</div>
+                          <PnLDisplay value={dayChange.value} percentage={dayChange.percentage} size="small" />
                         </div>
                       </div>
                     </div>

@@ -45,7 +45,7 @@ import {
 import { useRouter, useParams } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
-import { Campaign, CampaignStock, MoneyLocation, StockNotification } from "@/types";
+import { Campaign, CampaignStock, MoneyLocation, StockNotification, StockQuote } from "@/types";
 import AddStockModal from "@/components/campaigns/AddStockModal";
 import SellStockModal from "@/components/campaigns/SellStockModal";
 import EditStockModal from "@/components/campaigns/EditStockModal";
@@ -64,7 +64,14 @@ type LocationBalance = {
   stockCount: number;
 };
 
+type LastDayMovement = {
+  value: number;
+  percentage: number;
+};
+
 const formatCurrency = (value: number) => `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
 const getNotificationTargetPrice = (notification: StockNotification) => {
   if (notification.targetPrice != null) return notification.targetPrice;
@@ -94,6 +101,41 @@ const isSoldOut = (stock: CampaignStock) => getRemainingShares(stock) <= 0;
 
 const sortStarredFirst = (stocks: CampaignStock[]) =>
   [...stocks].sort((a, b) => Number(Boolean(b.isStarred)) - Number(Boolean(a.isStarred)));
+
+const getQuoteLastDayMovement = (quote?: StockQuote): LastDayMovement | null => {
+  if (!quote) return null;
+  const change =
+    isFiniteNumber(quote.change) ? quote.change
+    : isFiniteNumber(quote.currentPrice) && isFiniteNumber(quote.previousClose) ? quote.currentPrice - quote.previousClose
+    : null;
+
+  if (change == null) return null;
+
+  const percentage =
+    isFiniteNumber(quote.percentChange) ? quote.percentChange
+    : isFiniteNumber(quote.previousClose) && quote.previousClose !== 0 ? (change / quote.previousClose) * 100
+    : 0;
+
+  return {
+    value: change,
+    percentage,
+  };
+};
+
+const getLastDayMovement = (stock: CampaignStock, quote?: StockQuote): LastDayMovement | null => {
+  const remainingShares = getRemainingShares(stock);
+  const movement = getQuoteLastDayMovement(quote);
+  if (remainingShares <= 0 || !movement) return null;
+
+  return {
+    value: remainingShares * movement.value,
+    percentage: movement.percentage,
+  };
+};
+
+const getDisplayLastDayMovement = (stock: CampaignStock, quote?: StockQuote): LastDayMovement | null => {
+  return getLastDayMovement(stock, quote) ?? getQuoteLastDayMovement(quote);
+};
 
 export default function CampaignDetailPage() {
   const router = useRouter();
@@ -300,6 +342,32 @@ export default function CampaignDetailPage() {
     return campaign ? calculateCampaignStats(campaign, quotes) : { invested: 0, currentValue: 0, realized: 0, pnl: 0, pnlPercent: 0 };
   }, [campaign, quotes]);
 
+  const lastDayStats = useMemo<{ value: number; percentageBasis: number }>(() => {
+    if (!campaign) return { value: 0, percentageBasis: 0 };
+
+    return campaign.stocks.reduce(
+      (totals, stock) => {
+        const quote = quotes[stock.symbol];
+        const movement = getLastDayMovement(stock, quote);
+        if (!movement) return totals;
+
+        const remainingShares = getRemainingShares(stock);
+        const previousValue = isFiniteNumber(quote?.previousClose) ? remainingShares * quote.previousClose : 0;
+
+        return {
+          value: totals.value + movement.value,
+          percentageBasis: totals.percentageBasis + previousValue,
+        };
+      },
+      { value: 0, percentageBasis: 0 },
+    );
+  }, [campaign, quotes]);
+
+  const lastDayMovement = {
+    value: lastDayStats.value,
+    percentage: lastDayStats.percentageBasis > 0 ? (lastDayStats.value / lastDayStats.percentageBasis) * 100 : 0,
+  };
+
   const locationBalances = useMemo<Record<string, LocationBalance>>(() => {
     if (!campaign) return {};
 
@@ -437,6 +505,15 @@ export default function CampaignDetailPage() {
       render: (_: unknown, record: CampaignStock) => {
         const price = quotes[record.symbol]?.currentPrice;
         return price ? `$${price.toFixed(2)}` : "—";
+      },
+      align: "right" as const,
+    },
+    {
+      title: "Last Day",
+      key: "lastDay",
+      render: (_: unknown, record: CampaignStock) => {
+        const movement = getDisplayLastDayMovement(record, quotes[record.symbol]);
+        return movement ? <PnLDisplay value={movement.value} percentage={movement.percentage} size="small" /> : <span style={{ color: "#64748b" }}>—</span>;
       },
       align: "right" as const,
     },
@@ -613,6 +690,7 @@ export default function CampaignDetailPage() {
         const currentValue = remaining * currentPrice;
         const unrealized = remaining * (currentPrice - stock.buyPrice);
         const unrealizedPct = ((currentPrice - stock.buyPrice) / stock.buyPrice) * 100;
+        const lastDayMovement = getDisplayLastDayMovement(stock, quotes[stock.symbol]);
         const realized = stock.transactions.reduce(
           (sum, transaction) => sum + transaction.shares * (transaction.price - stock.buyPrice),
           0,
@@ -677,6 +755,12 @@ export default function CampaignDetailPage() {
               <div>
                 <span>Current</span>
                 <strong>{formatCurrency(currentPrice)}</strong>
+              </div>
+              <div>
+                <span>Last Day</span>
+                {lastDayMovement ?
+                  <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="small" />
+                : <strong className="neutral">-</strong>}
               </div>
               <div>
                 <span>In Stocks</span>
@@ -797,6 +881,10 @@ export default function CampaignDetailPage() {
             valueStyle={{ color: "#e2e8f0" }}
             formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
           />
+        </Card>
+        <Card className="stat-card" bordered={false}>
+          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Last Day</div>
+          <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="large" />
         </Card>
         <Card className="stat-card" bordered={false}>
           <Statistic
@@ -1032,7 +1120,7 @@ export default function CampaignDetailPage() {
                     pagination={false}
                     expandable={stockExpandable}
                     rowClassName={getStockRowClassName}
-                    scroll={{ x: 1100 }}
+                    scroll={{ x: 1220 }}
                   />
                 </div>
                 <div className="mobile-stock-cards">{renderMobileStockCards(activeStocks)}</div>
@@ -1061,7 +1149,7 @@ export default function CampaignDetailPage() {
                       pagination={false}
                       expandable={stockExpandable}
                       rowClassName={getStockRowClassName}
-                      scroll={{ x: 1100 }}
+                      scroll={{ x: 1220 }}
                     />
                   </div>
                   <div className="mobile-stock-cards">{renderMobileStockCards(soldStocks)}</div>
