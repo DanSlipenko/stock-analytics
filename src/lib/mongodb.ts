@@ -1,11 +1,13 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI;
-console.log("MONGODB_URI", MONGODB_URI);
+const mongoUri = process.env.MONGODB_URI;
 
-if (!MONGODB_URI) {
+console.log("mongoUri", mongoUri);
+if (!mongoUri) {
   throw new Error("Please define the MONGODB_URI environment variable inside .env.local");
 }
+
+const MONGODB_URI: string = mongoUri;
 
 /**
  * Global is used here to maintain a cached connection across hot reloads
