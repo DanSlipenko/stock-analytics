@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Spin } from 'antd';
+import { Skeleton } from 'antd';
 import { StockCandle } from '@/types';
 
 type ChartTime = import('lightweight-charts').Time;
@@ -174,8 +174,9 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
   const alertRulesRef = useRef(alertRules);
   const cleanupChartListenersRef = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasRenderedChart, setHasRenderedChart] = useState(false);
   const [noData, setNoData] = useState(false);
-  const [internalRange, setInternalRange] = useState<TimeRange>('1Y');
+  const [internalRange, setInternalRange] = useState<TimeRange>('3M');
   const [tradeOverlays, setTradeOverlays] = useState<TradeOverlayMarker[]>([]);
   
   // Overlay state
@@ -218,6 +219,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
     dataTimesRef.current = new Set();
     candlesRef.current = [];
     setTradeOverlays([]);
+    setHasRenderedChart(false);
   }, []);
 
   const syncAlertPriceLines = useCallback(() => {
@@ -491,6 +493,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
         unsubscribeVisibleRange?.();
       };
 
+      setHasRenderedChart(true);
       setLoading(false);
     } catch (error) {
       console.error('Chart load error:', error);
@@ -502,11 +505,13 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
 
   useEffect(() => {
     loadChart(activeRange);
+  }, [activeRange, loadChart]);
 
+  useEffect(() => {
     return () => {
       resetChart();
     };
-  }, [activeRange, loadChart, resetChart]);
+  }, [resetChart]);
 
   // Update markers without recreating the entire chart
   useEffect(() => {
@@ -571,13 +576,23 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
           </div>
         </div>
       )}
-      <div style={{ position: 'relative' }}>
+      <div style={{ position: 'relative', minHeight: height, height }}>
         {loading && (
-          <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 10 }}>
-            <Spin size="large" />
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 10,
+              padding: hasRenderedChart ? 0 : 16,
+              background: hasRenderedChart ? 'rgba(15, 22, 41, 0.45)' : '#0f1629',
+            }}
+          >
+            {!hasRenderedChart && (
+              <Skeleton.Node active style={{ width: '100%', height: Math.max(height - 32, 120), borderRadius: 8 }} />
+            )}
           </div>
         )}
-        <div ref={containerRef} style={{ minHeight: noData ? height : undefined }} />
+        <div ref={containerRef} style={{ minHeight: height, height }} />
         {noData && !loading && (
           <div style={{
             position: 'absolute',

@@ -30,9 +30,8 @@ const CampaignStockSchema = new Schema({
 });
 
 const MoneyLocationSchema = new Schema({
-  name:            { type: String, required: true },
-  type:            { type: String, enum: ['PayPal', 'Kraken', 'Fidelity Roth Clara', 'Fidelity Roth Dan', 'Fidelity Dan', 'Charles Schwab'], default: 'Fidelity Dan' },
-  allocatedAmount: { type: Number, default: 0 },
+  name: { type: String, required: true },
+  type: { type: String, enum: ['PayPal', 'Kraken', 'Fidelity Roth Clara', 'Fidelity Roth Dan', 'Fidelity Dan', 'Charles Schwab'], default: 'Fidelity Dan' },
 });
 
 // ---- Main Campaign Schema ----
@@ -44,7 +43,6 @@ export interface ICampaign extends Document {
     _id: mongoose.Types.ObjectId;
     name: string;
     type: string;
-    allocatedAmount: number;
   }>;
   stocks: Array<{
     _id: mongoose.Types.ObjectId;

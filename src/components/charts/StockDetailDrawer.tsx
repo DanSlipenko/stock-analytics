@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Drawer, Descriptions, Spin, Tag, Space, Statistic, Row, Col } from 'antd';
+import { Drawer, Descriptions, Skeleton, Tag, Space, Statistic, Row, Col } from 'antd';
 import { GlobalOutlined, BankOutlined } from '@ant-design/icons';
 import StockChart from './StockChart';
 import PnLDisplay from '../shared/PnLDisplay';
@@ -51,9 +51,24 @@ export default function StockDetailDrawer({ symbol, open, onClose }: StockDetail
       styles={{ body: { padding: 0, background: '#0a0e1a' }, header: { background: '#111827', borderBottom: '1px solid #1e2a3a' } }}
     >
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
-          <Spin size="large" />
-        </div>
+        <>
+          <div style={{ padding: '20px 24px', background: '#111827', borderBottom: '1px solid #1e2a3a' }}>
+            <Row gutter={16}>
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Col span={8} key={index}>
+                  <Skeleton.Input active size="small" style={{ width: 72, marginBottom: 10 }} />
+                  <Skeleton.Input active size="large" style={{ width: '100%' }} />
+                </Col>
+              ))}
+            </Row>
+          </div>
+          <div style={{ padding: '16px 24px' }}>
+            <Skeleton.Node active style={{ width: '100%', height: 350, borderRadius: 8 }} />
+          </div>
+          <div style={{ padding: '0 24px 24px' }}>
+            <Skeleton active paragraph={{ rows: 4 }} title={false} />
+          </div>
+        </>
       ) : (
         <>
           {/* Quote Stats */}

@@ -6,9 +6,10 @@ import { PlusOutlined, DeleteOutlined, EditOutlined, FolderOutlined, RightOutlin
 import { useRouter } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
+import { usePeriodPrices } from "@/hooks/usePeriodPrices";
 import CreateCampaignModal from "@/components/campaigns/CreateCampaignModal";
 import PnLDisplay from "@/components/shared/PnLDisplay";
-import { calculateCampaignStats } from "@/lib/campaignStats";
+import { calculateCampaignStats, calculateCampaignMonthlyChange, calculateCampaignAnnualPnL } from "@/lib/campaignStats";
 import { Campaign, CampaignStock, StockQuote } from "@/types";
 import { Button } from "@/components/ui/button";
 
@@ -76,16 +77,20 @@ export default function CampaignsPage() {
   }, [state.campaigns]);
 
   const { quotes, loading: quotesLoading } = useStockQuotes(allSymbols);
+  const { monthStartPrices, yearStartPrices, loading: periodPricesLoading } = usePeriodPrices(allSymbols);
 
   // Quote-dependent values (current value, P&L, day change) are loaded separately
   // from the campaign data, so show skeletons until the first quotes arrive.
   const quotesPending = allSymbols.length > 0 && quotesLoading && Object.keys(quotes).length === 0;
+  const periodPricesPending = allSymbols.length > 0 && periodPricesLoading && Object.keys(monthStartPrices).length === 0;
 
   const portfolioStats = useMemo(() => {
     return state.campaigns.reduce(
       (totals, campaign) => {
         const stats = calculateCampaignStats(campaign, quotes);
         const dayChange = calculateCampaignDayChange(campaign, quotes);
+        const monthChange = calculateCampaignMonthlyChange(campaign, quotes, monthStartPrices);
+        const annualPnl = calculateCampaignAnnualPnL(campaign, quotes, yearStartPrices);
 
         return {
           totalCurrentValue: totals.totalCurrentValue + stats.currentValue,
@@ -93,15 +98,33 @@ export default function CampaignsPage() {
           totalPnlBasis: totals.totalPnlBasis + stats.invested + Math.abs(stats.realized),
           dayChange: totals.dayChange + dayChange.value,
           dayChangeBasis: totals.dayChangeBasis + dayChange.basis,
+          monthChange: totals.monthChange + monthChange.value,
+          monthChangeBasis: totals.monthChangeBasis + monthChange.basis,
+          annualPnl: totals.annualPnl + annualPnl.pnl,
+          annualPnlBasis: totals.annualPnlBasis + annualPnl.basis,
         };
       },
-      { totalCurrentValue: 0, totalPnl: 0, totalPnlBasis: 0, dayChange: 0, dayChangeBasis: 0 },
+      {
+        totalCurrentValue: 0,
+        totalPnl: 0,
+        totalPnlBasis: 0,
+        dayChange: 0,
+        dayChangeBasis: 0,
+        monthChange: 0,
+        monthChangeBasis: 0,
+        annualPnl: 0,
+        annualPnlBasis: 0,
+      },
     );
-  }, [state.campaigns, quotes]);
+  }, [state.campaigns, quotes, monthStartPrices, yearStartPrices]);
 
   const portfolioPnlPercent = portfolioStats.totalPnlBasis > 0 ? (portfolioStats.totalPnl / portfolioStats.totalPnlBasis) * 100 : 0;
   const portfolioDayChangePercent =
     portfolioStats.dayChangeBasis > 0 ? (portfolioStats.dayChange / portfolioStats.dayChangeBasis) * 100 : 0;
+  const portfolioMonthChangePercent =
+    portfolioStats.monthChangeBasis > 0 ? (portfolioStats.monthChange / portfolioStats.monthChangeBasis) * 100 : 0;
+  const portfolioAnnualPnlPercent =
+    portfolioStats.annualPnlBasis > 0 ? (portfolioStats.annualPnl / portfolioStats.annualPnlBasis) * 100 : 0;
 
   const handleDelete = async (id: string) => {
     try {
@@ -164,10 +187,22 @@ export default function CampaignsPage() {
               : <PnLDisplay value={portfolioStats.dayChange} percentage={portfolioDayChangePercent} size="large" />}
             </Card>
             <Card className="stat-card" bordered={false}>
+              <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Monthly Change</div>
+              {quotesPending || periodPricesPending ?
+                <Skeleton.Input active size="large" style={{ width: 160 }} />
+              : <PnLDisplay value={portfolioStats.monthChange} percentage={portfolioMonthChangePercent} size="large" />}
+            </Card>
+            <Card className="stat-card" bordered={false}>
               <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total P&L</div>
               {quotesPending ?
                 <Skeleton.Input active size="large" style={{ width: 160 }} />
               : <PnLDisplay value={portfolioStats.totalPnl} percentage={portfolioPnlPercent} size="large" />}
+            </Card>
+            <Card className="stat-card" bordered={false}>
+              <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Annual P&L</div>
+              {quotesPending || periodPricesPending ?
+                <Skeleton.Input active size="large" style={{ width: 160 }} />
+              : <PnLDisplay value={portfolioStats.annualPnl} percentage={portfolioAnnualPnlPercent} size="large" />}
             </Card>
           </div>
 

@@ -6,7 +6,6 @@ export interface MoneyLocation {
   _id?: string;
   name: string;
   type: 'PayPal' | 'Kraken' | 'Fidelity Roth Clara' | 'Fidelity Roth Dan' | 'Fidelity Dan' | 'Charles Schwab';
-  allocatedAmount: number;
 }
 
 export interface Transaction {

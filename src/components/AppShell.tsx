@@ -59,7 +59,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           borderRight: "1px solid #1e2a3a",
         }}
         theme="dark">
-        <div className="sidebar-brand !py-2">
+        <div className="sidebar-brand !py-[13.5px]">
           <div className="sidebar-brand-icon">S</div>
           {!collapsed && <span className="sidebar-brand-text">Finances</span>}
         </div>
@@ -91,16 +91,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <NotificationBell />
         </Header>
-        <Content className="app-content" style={{ minHeight: "calc(100vh - 64px)" }}>{children}</Content>
+        <Content className="app-content" style={{ minHeight: "calc(100vh - 64px)" }}>
+          {children}
+        </Content>
       </Layout>
       <nav className="mobile-bottom-nav" aria-label="Primary navigation">
         {menuItems.map((item) => (
           <button
             key={item.key}
             type="button"
-            className={`mobile-bottom-nav-item ${selectedKey === item.key ? 'active' : ''}`}
-            onClick={() => router.push(item.key)}
-          >
+            className={`mobile-bottom-nav-item ${selectedKey === item.key ? "active" : ""}`}
+            onClick={() => router.push(item.key)}>
             {item.icon}
             <span>{item.label}</span>
           </button>

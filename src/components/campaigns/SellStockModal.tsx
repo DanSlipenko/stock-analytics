@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Modal, Form, InputNumber, Slider, Space, Button, Statistic, Card, Row, Col, message, DatePicker } from 'antd';
 import { CampaignStock, Campaign } from '@/types';
 import { useStore } from '@/context/StoreContext';
@@ -20,6 +20,42 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
   const [loading, setLoading] = useState(false);
   const [sellPercent, setSellPercent] = useState(100);
   const { quote } = useStockQuote(stock?.symbol || null);
+  const activeStockRef = useRef<string | null>(null);
+  const priceAutoFilledRef = useRef(false);
+
+  useEffect(() => {
+    if (!open) {
+      form.resetFields();
+      setSellPercent(100);
+      activeStockRef.current = null;
+      priceAutoFilledRef.current = false;
+      return;
+    }
+
+    if (!stock) return;
+
+    const stockKey = stock._id ?? stock.symbol;
+
+    if (activeStockRef.current !== stockKey) {
+      activeStockRef.current = stockKey;
+      priceAutoFilledRef.current = false;
+      setSellPercent(100);
+      form.setFieldsValue({
+        sellDate: dayjs(),
+        sellPrice: quote?.currentPrice ?? undefined,
+      });
+
+      if (quote?.currentPrice != null) {
+        priceAutoFilledRef.current = true;
+      }
+      return;
+    }
+
+    if (!priceAutoFilledRef.current && quote?.currentPrice != null) {
+      form.setFieldValue('sellPrice', quote.currentPrice);
+      priceAutoFilledRef.current = true;
+    }
+  }, [open, stock, quote?.currentPrice, form]);
 
   // Calculate remaining shares after previous sells
   const remainingShares = useMemo(() => {
@@ -127,7 +163,7 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
         </Row>
       </Card>
 
-      <Form form={form} layout="vertical" initialValues={{ sellPrice: quote?.currentPrice || 0, sellDate: dayjs() }}>
+      <Form form={form} layout="vertical">
         <Form.Item label={`Sell Percentage — ${sellPercent}% (${sharesToSell} shares)`}>
           <Slider
             value={sellPercent}

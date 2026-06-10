@@ -22,7 +22,7 @@ export default function EditStockModal({ open, onClose, campaign, stock, onEditT
 
   const locationOptions = useMemo(() => {
     return campaign.moneyLocations.map((loc) => ({
-      label: `${loc.name} ($${loc.allocatedAmount.toLocaleString()})`,
+      label: `${loc.name} (${loc.type})`,
       value: loc._id,
     }));
   }, [campaign.moneyLocations]);

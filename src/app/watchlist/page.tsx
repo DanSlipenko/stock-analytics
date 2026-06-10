@@ -39,7 +39,7 @@ export default function WatchlistPage() {
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const [drawerSymbol, setDrawerSymbol] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "candlestick" | "area">("list");
-  const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>("1Y");
+  const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>("3M");
 
   const symbols = useMemo(() => state.watchlist.map((w) => w.symbol), [state.watchlist]);
   const { quotes } = useStockQuotes(symbols);

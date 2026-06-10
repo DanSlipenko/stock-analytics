@@ -9,7 +9,7 @@ import {
   Statistic,
   Row,
   Col,
-  Spin,
+  Skeleton,
   Empty,
   Space,
   Input,
@@ -19,7 +19,6 @@ import {
   Popconfirm,
   Divider,
   Segmented,
-  Progress,
   Modal,
   Form,
   Radio,
@@ -50,17 +49,13 @@ import AddStockModal from "@/components/campaigns/AddStockModal";
 import SellStockModal from "@/components/campaigns/SellStockModal";
 import EditStockModal from "@/components/campaigns/EditStockModal";
 import EditTransactionModal from "@/components/campaigns/EditTransactionModal";
+import StockActionsDropdown from "@/components/campaigns/StockActionsDropdown";
 import StockChart, { ChartAlertRule, TimeRange, TIME_RANGES } from "@/components/charts/StockChart";
 import StockDetailDrawer from "@/components/charts/StockDetailDrawer";
 import PnLDisplay from "@/components/shared/PnLDisplay";
 import { calculateCampaignStats } from "@/lib/campaignStats";
 
-type LocationBalance = {
-  bought: number;
-  sold: number;
-  costBasis: number;
-  currentValue: number;
-  remaining: number;
+type LocationStats = {
   stockCount: number;
 };
 
@@ -137,6 +132,107 @@ const getDisplayLastDayMovement = (stock: CampaignStock, quote?: StockQuote): La
   return getLastDayMovement(stock, quote) ?? getQuoteLastDayMovement(quote);
 };
 
+const QuoteCellSkeleton = ({ width = 72 }: { width?: number }) => (
+  <Skeleton.Input active size="small" style={{ width, minWidth: width }} />
+);
+
+const STOCK_TABLE_CELL_WIDTHS = [88, 56, 72, 72, 80, 96, 88, 72, 100, 32];
+
+function StockTableSkeleton({ rowCount = 5 }: { rowCount?: number }) {
+  return (
+    <div className="stock-table-skeleton">
+      <div className="stock-table-skeleton-row stock-table-skeleton-header">
+        {STOCK_TABLE_CELL_WIDTHS.map((width, index) => (
+          <Skeleton.Input key={index} active size="small" style={{ width, flexShrink: 0 }} />
+        ))}
+      </div>
+      {Array.from({ length: rowCount }).map((_, rowIndex) => (
+        <div key={rowIndex} className="stock-table-skeleton-row">
+          {STOCK_TABLE_CELL_WIDTHS.map((width, index) => (
+            <Skeleton.Input key={index} active size="small" style={{ width, flexShrink: 0 }} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MobileStockCardSkeleton({ count = 3 }: { count?: number }) {
+  return (
+    <div className="mobile-stock-list">
+      {Array.from({ length: count }).map((_, index) => (
+        <div key={index} className="mobile-stock-card" style={{ padding: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
+            <Skeleton.Input active size="small" style={{ width: 88 }} />
+            <Skeleton.Button active size="small" style={{ width: 32 }} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+            {Array.from({ length: 6 }).map((__, cellIndex) => (
+              <div key={cellIndex}>
+                <Skeleton.Input active size="small" style={{ width: 56, marginBottom: 6 }} />
+                <Skeleton.Input active size="small" style={{ width: "80%" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CampaignDetailSkeleton() {
+  return (
+    <div className="page-container">
+      <div className="page-header">
+        <div className="campaign-page-heading">
+          <Skeleton.Button active size="small" style={{ width: 32 }} />
+          <Skeleton.Input active size="large" style={{ width: 220 }} />
+        </div>
+        <Skeleton.Button active size="default" style={{ width: 112 }} />
+      </div>
+
+      <div className="stats-grid">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <Card key={index} className="stat-card" bordered={false}>
+            <Skeleton.Input active size="small" style={{ width: 96, marginBottom: 10 }} />
+            <Skeleton.Input active size="large" style={{ width: 160 }} />
+          </Card>
+        ))}
+      </div>
+
+      <Card className="campaign-detail-card money-locations-card" bordered={false} style={{ marginBottom: 24 }}>
+        <Skeleton.Input active size="small" style={{ width: 140, marginBottom: 16 }} />
+        <Row gutter={16}>
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Col key={index} xs={24} md={12} lg={8}>
+              <Card size="small" style={{ background: "#0f1629", border: "1px solid #1e2a3a" }}>
+                <Skeleton.Input active size="small" style={{ width: "70%", marginBottom: 8 }} />
+                <Skeleton.Input active size="small" style={{ width: "45%" }} />
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </Card>
+
+      <Card className="campaign-detail-card campaign-stocks-card" bordered={false}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <Skeleton.Input active size="small" style={{ width: 72 }} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <Skeleton.Button active size="small" style={{ width: 96 }} />
+            <Skeleton.Button active size="small" style={{ width: 96 }} />
+          </div>
+        </div>
+        <div className="desktop-stock-table">
+          <StockTableSkeleton />
+        </div>
+        <div className="mobile-stock-cards">
+          <MobileStockCardSkeleton />
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function CampaignDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -155,7 +251,7 @@ export default function CampaignDetailPage() {
 
   // View mode
   const [viewMode, setViewMode] = useState<"list" | "candlestick" | "area">("list");
-  const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>("1Y");
+  const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>("3M");
 
   // Money location editing
   const [editingLocations, setEditingLocations] = useState(false);
@@ -190,7 +286,8 @@ export default function CampaignDetailPage() {
     return campaign?.stocks.map((s) => s.symbol) || [];
   }, [campaign]);
 
-  const { quotes } = useStockQuotes(symbols);
+  const { quotes, loading: quotesLoading } = useStockQuotes(symbols);
+  const quotesPending = symbols.length > 0 && quotesLoading && Object.keys(quotes).length === 0;
 
   const saveStockNotifications = useCallback(
     async (stockId: string, notifications: StockNotification[]) => {
@@ -368,53 +465,32 @@ export default function CampaignDetailPage() {
     percentage: lastDayStats.percentageBasis > 0 ? (lastDayStats.value / lastDayStats.percentageBasis) * 100 : 0,
   };
 
-  const locationBalances = useMemo<Record<string, LocationBalance>>(() => {
+  const locationStats = useMemo<Record<string, LocationStats>>(() => {
     if (!campaign) return {};
 
-    const balances: Record<string, LocationBalance> = {};
+    const stats: Record<string, LocationStats> = {};
 
     campaign.moneyLocations.forEach((location) => {
       if (!location._id) return;
-      balances[location._id] = {
-        bought: 0,
-        sold: 0,
-        costBasis: 0,
-        currentValue: 0,
-        remaining: location.allocatedAmount,
-        stockCount: 0,
-      };
+      stats[location._id] = { stockCount: 0 };
     });
 
     campaign.stocks.forEach((stock) => {
-      if (!stock.locationId || !balances[stock.locationId]) return;
+      if (!stock.locationId || !stats[stock.locationId]) return;
 
-      const bought = stock.shares * stock.buyPrice;
-      const sold = stock.transactions.reduce((sum, transaction) => sum + transaction.shares * transaction.price, 0);
       const soldShares = stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
       const remainingShares = stock.shares - soldShares;
-      const currentPrice = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
 
-      balances[stock.locationId].bought += bought;
-      balances[stock.locationId].sold += sold;
-      balances[stock.locationId].costBasis += remainingShares * stock.buyPrice;
-      balances[stock.locationId].currentValue += remainingShares * currentPrice;
-      balances[stock.locationId].stockCount += remainingShares > 0 ? 1 : 0;
+      if (remainingShares > 0) {
+        stats[stock.locationId].stockCount += 1;
+      }
     });
 
-    campaign.moneyLocations.forEach((location) => {
-      if (!location._id || !balances[location._id]) return;
-      balances[location._id].remaining = location.allocatedAmount - balances[location._id].bought + balances[location._id].sold;
-    });
-
-    return balances;
-  }, [campaign, quotes]);
+    return stats;
+  }, [campaign]);
 
   if (loading) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
-        <Spin size="large" />
-      </div>
-    );
+    return <CampaignDetailSkeleton />;
   }
 
   if (!campaign) {
@@ -503,6 +579,7 @@ export default function CampaignDetailPage() {
       title: "Current",
       key: "current",
       render: (_: unknown, record: CampaignStock) => {
+        if (quotesPending) return <QuoteCellSkeleton width={72} />;
         const price = quotes[record.symbol]?.currentPrice;
         return price ? `$${price.toFixed(2)}` : "—";
       },
@@ -512,6 +589,7 @@ export default function CampaignDetailPage() {
       title: "Last Day",
       key: "lastDay",
       render: (_: unknown, record: CampaignStock) => {
+        if (quotesPending) return <QuoteCellSkeleton width={88} />;
         const movement = getDisplayLastDayMovement(record, quotes[record.symbol]);
         return movement ? <PnLDisplay value={movement.value} percentage={movement.percentage} size="small" /> : <span style={{ color: "#64748b" }}>—</span>;
       },
@@ -521,6 +599,7 @@ export default function CampaignDetailPage() {
       title: "In Stocks",
       key: "currentValue",
       render: (_: unknown, record: CampaignStock) => {
+        if (quotesPending) return <QuoteCellSkeleton width={96} />;
         const remaining = getRemainingShares(record);
         const currentPrice = quotes[record.symbol]?.currentPrice ?? record.buyPrice;
         const currentValue = remaining * currentPrice;
@@ -535,6 +614,7 @@ export default function CampaignDetailPage() {
       render: (_: unknown, record: CampaignStock) => {
         const remaining = getRemainingShares(record);
         if (remaining <= 0) return <span style={{ color: "#fca5a5" }}>Sold</span>;
+        if (quotesPending) return <QuoteCellSkeleton width={88} />;
 
         const curPrice = quotes[record.symbol]?.currentPrice || record.buyPrice;
         const pnl = remaining * (curPrice - record.buyPrice);
@@ -559,69 +639,29 @@ export default function CampaignDetailPage() {
         const loc = campaign.moneyLocations.find((l) => l._id === record.locationId);
         if (!loc) return <span style={{ color: "#64748b" }}>—</span>;
 
-        const balance = loc._id ? locationBalances[loc._id] : undefined;
-        const purchaseAmount = record.shares * record.buyPrice;
-
         return (
           <div>
             <Tag>{loc.name}</Tag>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>{formatCurrency(purchaseAmount)} bought</div>
-            {balance && (
-              <div style={{ fontSize: 12, color: balance.remaining >= 0 ? "#00d4aa" : "#ef4444" }}>
-                {formatCurrency(balance.remaining)} left
-              </div>
-            )}
+            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>{loc.type}</div>
           </div>
         );
       },
     },
     {
-      title: "Actions",
+      title: "",
       key: "actions",
-      render: (_: unknown, record: CampaignStock) => {
-        const hasRemaining = getRemainingShares(record) > 0;
-        return (
-          <Space size="small">
-            {hasRemaining && (
-              <Button
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSellStock(record);
-                }}>
-                Sell
-              </Button>
-            )}
-            <Button
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                setBuyMoreStock(record);
-              }}>
-              Buy More
-            </Button>
-            <Button
-              size="small"
-              type="text"
-              onClick={(e) => {
-                e.stopPropagation();
-                setEditStock(record);
-              }}>
-              Edit
-            </Button>
-            <Popconfirm
-              title="Remove this stock?"
-              onConfirm={(e) => {
-                e?.stopPropagation();
-                deleteStock(record._id!);
-              }}
-              onCancel={(e) => e?.stopPropagation()}>
-              <Button size="small" danger type="text" icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
-            </Popconfirm>
-          </Space>
-        );
-      },
-      width: 220,
+      render: (_: unknown, record: CampaignStock) => (
+        <StockActionsDropdown
+          hasRemaining={getRemainingShares(record) > 0}
+          stopPropagation
+          onSell={() => setSellStock(record)}
+          onBuyMore={() => setBuyMoreStock(record)}
+          onEdit={() => setEditStock(record)}
+          onDelete={() => deleteStock(record._id!)}
+        />
+      ),
+      width: 48,
+      align: "right" as const,
     },
   ];
 
@@ -696,7 +736,6 @@ export default function CampaignDetailPage() {
           0,
         );
         const loc = campaign.moneyLocations.find((location) => location._id === stock.locationId);
-        const balance = loc?._id ? locationBalances[loc._id] : undefined;
         const notifications = stock.notifications || [];
 
         return (
@@ -729,14 +768,28 @@ export default function CampaignDetailPage() {
                   {stock.symbol} <LineChartOutlined style={{ fontSize: 11 }} />
                 </Button>
               </div>
-              <div className="mobile-stock-tags">
-                {starred && <Tag color="gold">Starred</Tag>}
-                {soldOut && <Tag color="red">Sold</Tag>}
-                {notifications.length > 0 && (
-                  <Tag color="gold">
-                    {notifications.length} alert{notifications.length === 1 ? "" : "s"}
-                  </Tag>
-                )}
+              <div className="mobile-stock-header-actions">
+                <div className="mobile-stock-tags">
+                  {starred && <Tag color="gold">Starred</Tag>}
+                  {soldOut && <Tag color="red">Sold</Tag>}
+                  {notifications.length > 0 && (
+                    <Tag color="gold">
+                      {notifications.length} alert{notifications.length === 1 ? "" : "s"}
+                    </Tag>
+                  )}
+                </div>
+                <StockActionsDropdown
+                  hasRemaining={!soldOut}
+                  showAlerts
+                  onAlerts={() => {
+                    setNotificationStock(stock);
+                    notificationForm.setFieldsValue({ thresholdType: "price", direction: "above" });
+                  }}
+                  onSell={() => setSellStock(stock)}
+                  onBuyMore={() => setBuyMoreStock(stock)}
+                  onEdit={() => setEditStock(stock)}
+                  onDelete={() => deleteStock(stock._id!)}
+                />
               </div>
             </div>
 
@@ -754,22 +807,30 @@ export default function CampaignDetailPage() {
               </div>
               <div>
                 <span>Current</span>
-                <strong>{formatCurrency(currentPrice)}</strong>
+                {quotesPending ?
+                  <QuoteCellSkeleton width={80} />
+                : <strong>{formatCurrency(currentPrice)}</strong>}
               </div>
               <div>
                 <span>Last Day</span>
-                {lastDayMovement ?
+                {quotesPending ?
+                  <QuoteCellSkeleton width={88} />
+                : lastDayMovement ?
                   <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="small" />
                 : <strong className="neutral">-</strong>}
               </div>
               <div>
                 <span>In Stocks</span>
-                <strong>{formatCurrency(currentValue)}</strong>
+                {quotesPending ?
+                  <QuoteCellSkeleton width={96} />
+                : <strong>{formatCurrency(currentValue)}</strong>}
               </div>
               <div>
                 <span>Unrealized</span>
                 {remaining <= 0 ?
                   <strong className="loss">Sold</strong>
+                : quotesPending ?
+                  <QuoteCellSkeleton width={88} />
                 : <PnLDisplay value={unrealized} percentage={unrealizedPct} size="small" />}
               </div>
               <div>
@@ -783,12 +844,7 @@ export default function CampaignDetailPage() {
             {loc && (
               <div className="mobile-stock-funding">
                 <Tag>{loc.name}</Tag>
-                <span>{formatCurrency(stock.shares * stock.buyPrice)} bought</span>
-                {balance && (
-                  <strong style={{ color: balance.remaining >= 0 ? "#00d4aa" : "#ef4444" }}>
-                    {formatCurrency(balance.remaining)} left
-                  </strong>
-                )}
+                <span>{loc.type}</span>
               </div>
             )}
 
@@ -814,42 +870,31 @@ export default function CampaignDetailPage() {
               </div>
             )}
 
-            <div className="mobile-stock-actions">
-              <Button
-                size="small"
-                icon={<BellOutlined />}
-                type={notifications.length > 0 ? "primary" : "default"}
-                onClick={() => {
-                  setNotificationStock(stock);
-                  notificationForm.setFieldsValue({ thresholdType: "price", direction: "above" });
-                }}>
-                Alerts
-              </Button>
-              {!soldOut && (
-                <Button size="small" onClick={() => setSellStock(stock)}>
-                  Sell
-                </Button>
-              )}
-              <Button size="small" onClick={() => setBuyMoreStock(stock)}>
-                Buy More
-              </Button>
-              <Button size="small" onClick={() => setEditStock(stock)}>
-                Edit
-              </Button>
-              <Popconfirm title="Remove this stock?" onConfirm={() => deleteStock(stock._id!)}>
-                <Button size="small" danger icon={<DeleteOutlined />}>
-                  Remove
-                </Button>
-              </Popconfirm>
-            </div>
           </div>
         );
       })}
     </div>
   );
 
+  const showChartTimeRange = campaign.stocks.length > 0 && viewMode !== "list";
+
   return (
     <div className="page-container">
+      {showChartTimeRange && (
+        <div className="stocks-time-range-bar">
+          <div className="time-range-group">
+            {TIME_RANGES.map((r) => (
+              <button
+                key={r.key}
+                className={`time-range-btn ${globalTimeRange === r.key ? "active" : ""}`}
+                onClick={() => setGlobalTimeRange(r.key)}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="page-header">
         <div className="campaign-page-heading">
@@ -874,27 +919,35 @@ export default function CampaignDetailPage() {
           />
         </Card>
         <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: "#64748b" }}>Total in Stocks</span>}
-            value={stats.currentValue}
-            precision={2}
-            valueStyle={{ color: "#e2e8f0" }}
-            formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
-          />
+          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total in Stocks</div>
+          {quotesPending ?
+            <Skeleton.Input active size="large" style={{ width: 160 }} />
+          : <Statistic
+              value={stats.currentValue}
+              precision={2}
+              valueStyle={{ color: "#e2e8f0" }}
+              formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+            />
+          }
         </Card>
         <Card className="stat-card" bordered={false}>
           <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Last Day</div>
-          <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="large" />
+          {quotesPending ?
+            <Skeleton.Input active size="large" style={{ width: 160 }} />
+          : <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="large" />}
         </Card>
         <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: "#64748b" }}>Total P&L</span>}
-            prefix={stats.pnl >= 0 ? <RiseOutlined /> : <FallOutlined />}
-            value={stats.pnl}
-            precision={2}
-            valueStyle={{ color: stats.pnl >= 0 ? "#22c55e" : "#ef4444" }}
-            formatter={(v) => `${Number(v) >= 0 ? "+" : ""}$${Math.abs(Number(v)).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
-          />
+          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total P&L</div>
+          {quotesPending ?
+            <Skeleton.Input active size="large" style={{ width: 160 }} />
+          : <Statistic
+              prefix={stats.pnl >= 0 ? <RiseOutlined /> : <FallOutlined />}
+              value={stats.pnl}
+              precision={2}
+              valueStyle={{ color: stats.pnl >= 0 ? "#22c55e" : "#ef4444" }}
+              formatter={(v) => `${Number(v) >= 0 ? "+" : ""}$${Math.abs(Number(v)).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+            />
+          }
         </Card>
         <Card className="stat-card" bordered={false}>
           <Statistic
@@ -978,17 +1031,6 @@ export default function CampaignDetailPage() {
                     { label: "Charles Schwab", value: "Charles Schwab" },
                   ]}
                 />
-                <InputNumber
-                  value={loc.allocatedAmount}
-                  onChange={(v) => {
-                    const updated = [...localLocations];
-                    updated[i] = { ...updated[i], allocatedAmount: v || 0 };
-                    setLocalLocations(updated);
-                  }}
-                  prefix="$"
-                  style={{ flex: 1, minWidth: 0 }}
-                  min={0}
-                />
                 <Button
                   type="text"
                   danger
@@ -999,7 +1041,7 @@ export default function CampaignDetailPage() {
             ))}
             <Button
               type="dashed"
-              onClick={() => setLocalLocations([...localLocations, { name: "", type: "Fidelity Dan", allocatedAmount: 0 }])}
+              onClick={() => setLocalLocations([...localLocations, { name: "", type: "Fidelity Dan" }])}
               icon={<PlusOutlined />}
               block>
               Add Location
@@ -1012,53 +1054,21 @@ export default function CampaignDetailPage() {
           />
         : <Row gutter={16}>
             {campaign.moneyLocations.map((loc) => {
-              const balance = loc._id ? locationBalances[loc._id] : undefined;
-              const used = balance ? loc.allocatedAmount - balance.remaining : 0;
-              const usedPercent = loc.allocatedAmount > 0 ? Math.min(Math.max((used / loc.allocatedAmount) * 100, 0), 100) : 0;
+              const stats = loc._id ? locationStats[loc._id] : undefined;
 
               return (
                 <Col key={loc._id} xs={24} md={12} lg={8}>
                   <Card size="small" style={{ background: "#0f1629", border: "1px solid #1e2a3a", marginBottom: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                       <div>
                         <div style={{ fontWeight: 600, color: "#e2e8f0", marginBottom: 4 }}>{loc.name}</div>
                         <Tag color="default">{loc.type}</Tag>
                       </div>
                       <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4 }}>Left to buy</div>
-                        <div
-                          style={{
-                            fontSize: 18,
-                            fontWeight: 800,
-                            color: (balance?.remaining ?? loc.allocatedAmount) >= 0 ? "#00d4aa" : "#ef4444",
-                          }}>
-                          {formatCurrency(balance?.remaining ?? loc.allocatedAmount)}
-                        </div>
+                        <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4 }}>Positions</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e8f0" }}>{stats?.stockCount ?? 0}</div>
                       </div>
                     </div>
-
-                    <Progress
-                      percent={usedPercent}
-                      showInfo={false}
-                      strokeColor={used > loc.allocatedAmount ? "#ef4444" : "#00d4aa"}
-                      trailColor="#1e2a3a"
-                      style={{ marginBottom: 8 }}
-                    />
-
-                    <Row gutter={12}>
-                      <Col span={8}>
-                        <div style={{ fontSize: 11, color: "#64748b" }}>Allocated</div>
-                        <div style={{ color: "#e2e8f0", fontWeight: 600 }}>{formatCurrency(loc.allocatedAmount)}</div>
-                      </Col>
-                      <Col span={8}>
-                        <div style={{ fontSize: 11, color: "#64748b" }}>Bought</div>
-                        <div style={{ color: "#e2e8f0", fontWeight: 600 }}>{formatCurrency(balance?.bought ?? 0)}</div>
-                      </Col>
-                      <Col span={8}>
-                        <div style={{ fontSize: 11, color: "#64748b" }}>In Stocks</div>
-                        <div style={{ color: "#e2e8f0", fontWeight: 600 }}>{formatCurrency(balance?.currentValue ?? 0)}</div>
-                      </Col>
-                    </Row>
                   </Card>
                 </Col>
               );
@@ -1072,21 +1082,7 @@ export default function CampaignDetailPage() {
         className="campaign-detail-card campaign-stocks-card"
         title={
           <div className="stocks-card-title">
-            <span className="stocks-card-heading">
-              Stocks
-              {campaign.stocks.length > 0 && viewMode !== "list" && (
-                <div className="time-range-group">
-                  {TIME_RANGES.map((r) => (
-                    <button
-                      key={r.key}
-                      className={`time-range-btn ${globalTimeRange === r.key ? "active" : ""}`}
-                      onClick={() => setGlobalTimeRange(r.key)}>
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </span>
+            <span className="stocks-card-heading">Stocks</span>
             <Space className="stocks-card-actions">
               <Segmented
                 options={[
@@ -1265,29 +1261,18 @@ export default function CampaignDetailPage() {
                             </Tag>
                           )}
                         </Space>
-                        <Space size="small" className="chart-stock-actions">
-                          <Button
-                            size="small"
-                            type={notifications.length > 0 ? "primary" : "text"}
-                            icon={<BellOutlined />}
-                            onClick={() => {
-                              setNotificationStock(stock);
-                              notificationForm.setFieldsValue({ thresholdType: "price", direction: "above" });
-                            }}>
-                            Alerts
-                          </Button>
-                          <Button size="small" type="text" onClick={() => setBuyMoreStock(stock)}>
-                            Buy More
-                          </Button>
-                          <Button size="small" type="text" onClick={() => setEditStock(stock)}>
-                            Edit
-                          </Button>
-                          {!soldOut && (
-                            <Button size="small" type="text" onClick={() => setSellStock(stock)}>
-                              Sell
-                            </Button>
-                          )}
-                        </Space>
+                        <StockActionsDropdown
+                          hasRemaining={!soldOut}
+                          showAlerts
+                          onAlerts={() => {
+                            setNotificationStock(stock);
+                            notificationForm.setFieldsValue({ thresholdType: "price", direction: "above" });
+                          }}
+                          onSell={() => setSellStock(stock)}
+                          onBuyMore={() => setBuyMoreStock(stock)}
+                          onEdit={() => setEditStock(stock)}
+                          onDelete={() => deleteStock(stock._id!)}
+                        />
                       </div>
                       <StockChart
                         symbol={stock.symbol}

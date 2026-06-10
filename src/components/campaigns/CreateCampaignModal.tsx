@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Modal, Form, Input, Button, Space, Select, InputNumber, Divider, DatePicker } from "antd";
+import { Modal, Form, Input, Button, Space, Select, Divider, DatePicker } from "antd";
 import { PlusOutlined, DeleteOutlined, BankOutlined } from "@ant-design/icons";
 import { useStore } from "@/context/StoreContext";
 import { Campaign, MoneyLocation } from "@/types";
@@ -33,7 +33,7 @@ export default function CreateCampaignModal({ open, onClose, campaign }: CreateC
   }, [campaign, form, open]);
 
   const addLocation = () => {
-    setLocations([...locations, { name: "", type: "Fidelity Dan", allocatedAmount: 0 }]);
+    setLocations([...locations, { name: "", type: "Fidelity Dan" }]);
   };
 
   const removeLocation = (index: number) => {
@@ -136,15 +136,6 @@ export default function CreateCampaignModal({ open, onClose, campaign }: CreateC
                 { label: "Fidelity Dan", value: "Fidelity Dan" },
                 { label: "Charles Schwab", value: "Charles Schwab" },
               ]}
-            />
-            <InputNumber
-              placeholder="Amount"
-              value={loc.allocatedAmount}
-              onChange={(v) => updateLocation(i, "allocatedAmount", v || 0)}
-              prefix="$"
-              style={{ flex: 1 }}
-              min={0}
-              formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
             />
             <Button
               type="text"
