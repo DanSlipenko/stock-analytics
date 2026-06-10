@@ -14,24 +14,27 @@ interface PnLDisplayProps {
 export default function PnLDisplay({ value, percentage, showArrow = true, size = 'default', prefix = '$' }: PnLDisplayProps) {
   const isGain = value > 0;
   const isLoss = value < 0;
-  const color = isGain ? '#22c55e' : isLoss ? '#ef4444' : '#94a3b8';
+  const valueColor = isGain ? '#22c55e' : isLoss ? '#ef4444' : '#94a3b8';
+  const percentIsGain = percentage != null ? percentage > 0 : isGain;
+  const percentIsLoss = percentage != null ? percentage < 0 : isLoss;
+  const percentColor = percentIsGain ? '#22c55e' : percentIsLoss ? '#ef4444' : '#94a3b8';
 
   const fontSize = size === 'small' ? 13 : size === 'large' ? 20 : 15;
   const iconSize = size === 'small' ? 10 : size === 'large' ? 16 : 12;
 
   return (
-    <span style={{ color, fontSize, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+    <span style={{ fontSize, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
       {showArrow && (
-        isGain ? <ArrowUpOutlined style={{ fontSize: iconSize }} /> :
-        isLoss ? <ArrowDownOutlined style={{ fontSize: iconSize }} /> :
-        <MinusOutlined style={{ fontSize: iconSize }} />
+        isGain ? <ArrowUpOutlined style={{ fontSize: iconSize, color: valueColor }} /> :
+        isLoss ? <ArrowDownOutlined style={{ fontSize: iconSize, color: valueColor }} /> :
+        <MinusOutlined style={{ fontSize: iconSize, color: valueColor }} />
       )}
-      <span>
-        {isGain ? '+' : ''}{prefix}{Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      <span style={{ color: valueColor }}>
+        {isGain ? '+' : isLoss ? '-' : ''}{prefix}{Math.abs(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </span>
       {percentage !== undefined && (
-        <span style={{ fontSize: fontSize - 2, opacity: 0.85 }}>
-          ({isGain ? '+' : ''}{percentage.toFixed(2)}%)
+        <span style={{ fontSize: fontSize - 2, color: percentColor, opacity: 0.95 }}>
+          ({percentIsGain ? '+' : ''}{percentage.toFixed(2)}%)
         </span>
       )}
     </span>

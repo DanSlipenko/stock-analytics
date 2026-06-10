@@ -30,10 +30,6 @@ type TradeOverlayMarker = {
   key: string;
   x: number;
   y: number;
-  labelY: number;
-  side: 'buy' | 'sell';
-  label: string;
-  price: number;
   color: string;
 };
 
@@ -88,21 +84,8 @@ const normalizeMarkers = (markers: ChartMarker[] | undefined, validTimes: Set<st
     .sort((a, b) => String(a.time).localeCompare(String(b.time)));
 };
 
-const getDisplayMarkers = (markers: ChartMarker[] | undefined, validTimes: Set<string>): ChartMarker[] =>
-  normalizeMarkers(markers, validTimes).map((marker) => {
-    const tradeMarker = parseTradeMarker(marker);
-    if (!tradeMarker) return marker;
-
-    return {
-      ...marker,
-      position: 'atPriceMiddle',
-      price: tradeMarker.price,
-      color: tradeMarker.color,
-      shape: 'circle',
-      size: 0.65,
-      text: undefined,
-    } as ChartMarker;
-  });
+const getNonTradeMarkers = (markers: ChartMarker[] | undefined, validTimes: Set<string>): ChartMarker[] =>
+  normalizeMarkers(markers, validTimes).filter((marker) => !parseTradeMarker(marker));
 
 const getAlertTargetPrice = (rule: ChartAlertRule) => {
   if (rule.targetPrice != null) return rule.targetPrice;
@@ -274,16 +257,12 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
         key: `${String(marker.time)}-${tradeMarker.side}-${index}`,
         x,
         y,
-        labelY: Math.min(Math.max(y, 24), height - 24),
-        side: tradeMarker.side,
-        label: tradeMarker.label,
-        price: tradeMarker.price,
         color: tradeMarker.color,
       }];
     });
 
     setTradeOverlays(nextTradeOverlays);
-  }, [height]);
+  }, []);
 
   const loadChart = useCallback(async (range: TimeRange) => {
     if (!containerRef.current) return;
@@ -402,7 +381,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
         dataTimesRef.current = validTimes;
 
         // Apply compact chart markers immediately if they exist.
-        const validMarkers = getDisplayMarkers(markersRef.current, validTimes);
+        const validMarkers = getNonTradeMarkers(markersRef.current, validTimes);
         const alertMarkers = getAlertTriggerMarkers(alertRulesRef.current, candles);
         const chartMarkers = [...validMarkers, ...alertMarkers]
           .sort((a, b) => String(a.time).localeCompare(String(b.time)));
@@ -517,7 +496,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
   useEffect(() => {
     if (seriesRef.current && dataTimesRef.current.size > 0) {
       try {
-        const validMarkers = getDisplayMarkers(markers, dataTimesRef.current);
+        const validMarkers = getNonTradeMarkers(markers, dataTimesRef.current);
         const alertMarkers = getAlertTriggerMarkers(alertRules, candlesRef.current);
         const chartMarkers = [...validMarkers, ...alertMarkers]
           .sort((a, b) => String(a.time).localeCompare(String(b.time)));
@@ -588,7 +567,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
             }}
           >
             {!hasRenderedChart && (
-              <Skeleton.Node active style={{ width: '100%', height: Math.max(height - 32, 120), borderRadius: 8 }} />
+              <Skeleton.Node active style={{ width: '100%', height: Math.max(height - 32, 120), borderRadius: 0 }} />
             )}
           </div>
         )}
@@ -612,74 +591,25 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
             <span>Check the symbol or choose a different result.</span>
           </div>
         )}
-        {tradeOverlays.map((marker) => {
-          const labelLeft = marker.x < 120 ? 12 : undefined;
-          const labelRight = marker.x >= 120 ? 12 : undefined;
-
-          return (
-            <div
-              key={marker.key}
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: marker.x,
-                zIndex: 4,
-                pointerEvents: 'none',
-              }}
-            >
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  bottom: 0,
-                  borderLeft: `2px dashed ${marker.color}cc`,
-                  boxShadow: `0 0 12px ${marker.color}55`,
-                  transform: 'translateX(-1px)',
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  top: marker.y,
-                  left: 0,
-                  width: 12,
-                  height: 12,
-                  borderRadius: '50%',
-                  background: marker.color,
-                  border: '2px solid #111827',
-                  boxShadow: `0 0 0 3px ${marker.color}33, 0 0 14px ${marker.color}99`,
-                  transform: 'translate(-50%, -50%)',
-                }}
-              />
-              <div
-                style={{
-                  position: 'absolute',
-                  top: marker.labelY,
-                  left: labelLeft,
-                  right: labelRight,
-                  transform: 'translateY(-50%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '5px 8px',
-                  borderRadius: 999,
-                  background: 'rgba(17, 24, 39, 0.92)',
-                  border: `1px solid ${marker.color}99`,
-                  color: marker.color,
-                  fontSize: 11,
-                  fontWeight: 800,
-                  letterSpacing: 0.4,
-                  whiteSpace: 'nowrap',
-                  boxShadow: '0 6px 18px rgba(0, 0, 0, 0.45)',
-                }}
-              >
-                <span>{marker.side === 'buy' ? 'B' : 'S'}</span>
-                <span>{marker.label}</span>
-              </div>
-            </div>
-          );
-        })}
+        {tradeOverlays.map((marker) => (
+          <div
+            key={marker.key}
+            style={{
+              position: 'absolute',
+              top: marker.y,
+              left: marker.x,
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              background: marker.color,
+              border: '2px solid #111827',
+              boxShadow: `0 0 0 3px ${marker.color}33, 0 0 14px ${marker.color}99`,
+              transform: 'translate(-50%, -50%)',
+              zIndex: 4,
+              pointerEvents: 'none',
+            }}
+          />
+        ))}
         
         {/* Legend / Tooltip Overlay */}
         {tooltip.show && (
@@ -692,7 +622,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
             background: 'rgba(15, 22, 41, 0.8)',
             backdropFilter: 'blur(4px)',
             padding: '8px 12px',
-            borderRadius: 8,
+            borderRadius: 0,
             border: '1px solid #1e2a3a',
             fontSize: 12,
             color: '#e2e8f0',

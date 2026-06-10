@@ -218,7 +218,7 @@ export default function WatchlistPage() {
 
                 return (
                   <Col key={item._id || item.symbol} xs={24} lg={12}>
-                    <div style={{ background: "#0f1629", borderRadius: 12, border: "1px solid #1e2a3a", overflow: "hidden" }}>
+                    <div style={{ background: "#0f1629", border: "1px solid #1e2a3a", overflow: "hidden" }}>
                       <div
                         style={{
                           padding: "12px 16px",

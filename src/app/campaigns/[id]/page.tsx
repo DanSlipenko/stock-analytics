@@ -32,8 +32,6 @@ import {
   DeleteOutlined,
   DollarOutlined,
   TrophyOutlined,
-  RiseOutlined,
-  FallOutlined,
   LineChartOutlined,
   UnorderedListOutlined,
   AppstoreOutlined,
@@ -44,6 +42,7 @@ import {
 import { useRouter, useParams } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
+import { usePeriodPrices } from "@/hooks/usePeriodPrices";
 import { Campaign, CampaignStock, MoneyLocation, StockNotification, StockQuote } from "@/types";
 import AddStockModal from "@/components/campaigns/AddStockModal";
 import SellStockModal from "@/components/campaigns/SellStockModal";
@@ -53,7 +52,8 @@ import StockActionsDropdown from "@/components/campaigns/StockActionsDropdown";
 import StockChart, { ChartAlertRule, TimeRange, TIME_RANGES } from "@/components/charts/StockChart";
 import StockDetailDrawer from "@/components/charts/StockDetailDrawer";
 import PnLDisplay from "@/components/shared/PnLDisplay";
-import { calculateCampaignStats } from "@/lib/campaignStats";
+import { calculateCampaignStats, calculateCampaignAnnualPnL } from "@/lib/campaignStats";
+import { cn } from "@/lib/utils";
 
 type LocationStats = {
   stockCount: number;
@@ -94,6 +94,23 @@ const getRemainingShares = (stock: CampaignStock) => Math.max(stock.shares - get
 
 const isSoldOut = (stock: CampaignStock) => getRemainingShares(stock) <= 0;
 
+const getRealizedPnL = (stock: CampaignStock) =>
+  stock.transactions.reduce((sum, transaction) => sum + transaction.shares * (transaction.price - stock.buyPrice), 0);
+
+const getRealizedPnLPercent = (stock: CampaignStock) => {
+  const sold = getSoldShares(stock);
+  if (sold <= 0) return 0;
+  const costBasis = sold * stock.buyPrice;
+  return costBasis > 0 ? (getRealizedPnL(stock) / costBasis) * 100 : 0;
+};
+
+const getAverageSoldPrice = (stock: CampaignStock) => {
+  const sold = getSoldShares(stock);
+  if (sold <= 0) return null;
+  const proceeds = stock.transactions.reduce((sum, transaction) => sum + transaction.shares * transaction.price, 0);
+  return proceeds / sold;
+};
+
 const sortStarredFirst = (stocks: CampaignStock[]) =>
   [...stocks].sort((a, b) => Number(Boolean(b.isStarred)) - Number(Boolean(a.isStarred)));
 
@@ -132,11 +149,19 @@ const getDisplayLastDayMovement = (stock: CampaignStock, quote?: StockQuote): La
   return getLastDayMovement(stock, quote) ?? getQuoteLastDayMovement(quote);
 };
 
-const QuoteCellSkeleton = ({ width = 72 }: { width?: number }) => (
-  <Skeleton.Input active size="small" style={{ width, minWidth: width }} />
-);
+const QuoteCellSkeleton = ({ width = 72 }: { width?: number }) => <Skeleton.Input active size="small" style={{ width, minWidth: width }} />;
 
-const STOCK_TABLE_CELL_WIDTHS = [88, 56, 72, 72, 80, 96, 88, 72, 100, 32];
+const METRIC_BOX_CLASS = "min-w-0 rounded-lg border border-border bg-card/50 p-2.5";
+const METRIC_LABEL_CLASS = "mb-1.5 block text-xs font-semibold leading-tight text-muted-foreground";
+const METRIC_VALUE_CLASS = "block text-sm font-semibold";
+
+const getPnLToneClass = (value: number) => {
+  if (value > 0) return "border-green-500/30 bg-green-500/10";
+  if (value < 0) return "border-destructive/30 bg-destructive/10";
+  return "";
+};
+
+const STOCK_TABLE_CELL_WIDTHS = [88, 56, 72, 72, 72, 80, 96, 88, 72, 100, 32];
 
 function StockTableSkeleton({ rowCount = 5 }: { rowCount?: number }) {
   return (
@@ -250,7 +275,7 @@ export default function CampaignDetailPage() {
   const [drawerSymbol, setDrawerSymbol] = useState<string | null>(null);
 
   // View mode
-  const [viewMode, setViewMode] = useState<"list" | "candlestick" | "area">("list");
+  const [viewMode, setViewMode] = useState<"list" | "candlestick" | "area">("area");
   const [globalTimeRange, setGlobalTimeRange] = useState<TimeRange>("3M");
 
   // Money location editing
@@ -287,7 +312,9 @@ export default function CampaignDetailPage() {
   }, [campaign]);
 
   const { quotes, loading: quotesLoading } = useStockQuotes(symbols);
+  const { yearStartPrices, loading: periodPricesLoading } = usePeriodPrices(symbols);
   const quotesPending = symbols.length > 0 && quotesLoading && Object.keys(quotes).length === 0;
+  const periodPricesPending = symbols.length > 0 && periodPricesLoading && Object.keys(yearStartPrices).length === 0;
 
   const saveStockNotifications = useCallback(
     async (stockId: string, notifications: StockNotification[]) => {
@@ -439,6 +466,10 @@ export default function CampaignDetailPage() {
     return campaign ? calculateCampaignStats(campaign, quotes) : { invested: 0, currentValue: 0, realized: 0, pnl: 0, pnlPercent: 0 };
   }, [campaign, quotes]);
 
+  const annualPnlStats = useMemo(() => {
+    return campaign ? calculateCampaignAnnualPnL(campaign, quotes, yearStartPrices) : { pnl: 0, pnlPercent: 0, basis: 0 };
+  }, [campaign, quotes, yearStartPrices]);
+
   const lastDayStats = useMemo<{ value: number; percentageBasis: number }>(() => {
     if (!campaign) return { value: 0, percentageBasis: 0 };
 
@@ -576,6 +607,15 @@ export default function CampaignDetailPage() {
       align: "right" as const,
     },
     {
+      title: "Sold Price",
+      key: "soldPrice",
+      render: (_: unknown, record: CampaignStock) => {
+        const soldPrice = getAverageSoldPrice(record);
+        return soldPrice != null ? `$${soldPrice.toFixed(2)}` : <span style={{ color: "#64748b" }}>—</span>;
+      },
+      align: "right" as const,
+    },
+    {
       title: "Current",
       key: "current",
       render: (_: unknown, record: CampaignStock) => {
@@ -591,7 +631,9 @@ export default function CampaignDetailPage() {
       render: (_: unknown, record: CampaignStock) => {
         if (quotesPending) return <QuoteCellSkeleton width={88} />;
         const movement = getDisplayLastDayMovement(record, quotes[record.symbol]);
-        return movement ? <PnLDisplay value={movement.value} percentage={movement.percentage} size="small" /> : <span style={{ color: "#64748b" }}>—</span>;
+        return movement ?
+            <PnLDisplay value={movement.value} percentage={movement.percentage} size="small" />
+          : <span style={{ color: "#64748b" }}>—</span>;
       },
       align: "right" as const,
     },
@@ -609,11 +651,15 @@ export default function CampaignDetailPage() {
       align: "right" as const,
     },
     {
-      title: "Unrealized P&L",
+      title: "P&L",
       key: "unrealized",
       render: (_: unknown, record: CampaignStock) => {
         const remaining = getRemainingShares(record);
-        if (remaining <= 0) return <span style={{ color: "#fca5a5" }}>Sold</span>;
+        if (remaining <= 0) {
+          const realized = getRealizedPnL(record);
+          if (realized === 0) return <span style={{ color: "#64748b" }}>—</span>;
+          return <PnLDisplay value={realized} percentage={getRealizedPnLPercent(record)} size="small" />;
+        }
         if (quotesPending) return <QuoteCellSkeleton width={88} />;
 
         const curPrice = quotes[record.symbol]?.currentPrice || record.buyPrice;
@@ -627,7 +673,8 @@ export default function CampaignDetailPage() {
       title: "Realized",
       key: "realized",
       render: (_: unknown, record: CampaignStock) => {
-        const realized = record.transactions.reduce((sum, t) => sum + t.shares * (t.price - record.buyPrice), 0);
+        if (isSoldOut(record)) return <span style={{ color: "#64748b" }}>—</span>;
+        const realized = getRealizedPnL(record);
         return realized !== 0 ? <PnLDisplay value={realized} size="small" /> : <span style={{ color: "#64748b" }}>—</span>;
       },
       align: "right" as const,
@@ -731,10 +778,9 @@ export default function CampaignDetailPage() {
         const unrealized = remaining * (currentPrice - stock.buyPrice);
         const unrealizedPct = ((currentPrice - stock.buyPrice) / stock.buyPrice) * 100;
         const lastDayMovement = getDisplayLastDayMovement(stock, quotes[stock.symbol]);
-        const realized = stock.transactions.reduce(
-          (sum, transaction) => sum + transaction.shares * (transaction.price - stock.buyPrice),
-          0,
-        );
+        const realized = getRealizedPnL(stock);
+        const realizedPct = getRealizedPnLPercent(stock);
+        const soldPrice = getAverageSoldPrice(stock);
         const loc = campaign.moneyLocations.find((location) => location._id === stock.locationId);
         const notifications = stock.notifications || [];
 
@@ -794,51 +840,75 @@ export default function CampaignDetailPage() {
             </div>
 
             <div className="mobile-stock-metrics">
-              <div>
-                <span>Shares</span>
-                <strong>
-                  {remaining.toLocaleString()}
-                  {sold > 0 && <small> / {stock.shares.toLocaleString()}</small>}
-                </strong>
-              </div>
-              <div>
-                <span>Buy Price</span>
-                <strong>{formatCurrency(stock.buyPrice)}</strong>
-              </div>
-              <div>
-                <span>Current</span>
-                {quotesPending ?
-                  <QuoteCellSkeleton width={80} />
-                : <strong>{formatCurrency(currentPrice)}</strong>}
-              </div>
-              <div>
-                <span>Last Day</span>
-                {quotesPending ?
-                  <QuoteCellSkeleton width={88} />
-                : lastDayMovement ?
-                  <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="small" />
-                : <strong className="neutral">-</strong>}
-              </div>
-              <div>
-                <span>In Stocks</span>
-                {quotesPending ?
-                  <QuoteCellSkeleton width={96} />
-                : <strong>{formatCurrency(currentValue)}</strong>}
-              </div>
-              <div>
-                <span>Unrealized</span>
-                {remaining <= 0 ?
-                  <strong className="loss">Sold</strong>
-                : quotesPending ?
-                  <QuoteCellSkeleton width={88} />
-                : <PnLDisplay value={unrealized} percentage={unrealizedPct} size="small" />}
-              </div>
-              <div>
-                <span>Realized</span>
-                {realized !== 0 ?
-                  <PnLDisplay value={realized} size="small" />
-                : <strong className="neutral">-</strong>}
-              </div>
+              {soldOut ?
+                <>
+                  <div>
+                    <span>Buy Price</span>
+                    <strong>{formatCurrency(stock.buyPrice)}</strong>
+                  </div>
+                  <div>
+                    <span>Sold Price</span>
+                    <strong>{soldPrice != null ? formatCurrency(soldPrice) : "—"}</strong>
+                  </div>
+                  <div>
+                    <span>Current</span>
+                    {quotesPending ?
+                      <QuoteCellSkeleton width={80} />
+                    : <strong>{formatCurrency(currentPrice)}</strong>}
+                  </div>
+                  <div>
+                    <span>Realized P&L</span>
+                    {realized !== 0 ?
+                      <PnLDisplay value={realized} percentage={realizedPct} size="small" />
+                    : <strong className="neutral">-</strong>}
+                  </div>
+                </>
+              : <>
+                  <div>
+                    <span>Shares</span>
+                    <strong>
+                      {remaining.toLocaleString()}
+                      {sold > 0 && <small> / {stock.shares.toLocaleString()}</small>}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Buy Price</span>
+                    <strong>{formatCurrency(stock.buyPrice)}</strong>
+                  </div>
+                  <div>
+                    <span>Current</span>
+                    {quotesPending ?
+                      <QuoteCellSkeleton width={80} />
+                    : <strong>{formatCurrency(currentPrice)}</strong>}
+                  </div>
+                  <div>
+                    <span>Last Day</span>
+                    {quotesPending ?
+                      <QuoteCellSkeleton width={88} />
+                    : lastDayMovement ?
+                      <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="small" />
+                    : <strong className="neutral">-</strong>}
+                  </div>
+                  <div>
+                    <span>In Stocks</span>
+                    {quotesPending ?
+                      <QuoteCellSkeleton width={96} />
+                    : <strong>{formatCurrency(currentValue)}</strong>}
+                  </div>
+                  <div>
+                    <span>Unrealized</span>
+                    {quotesPending ?
+                      <QuoteCellSkeleton width={88} />
+                    : <PnLDisplay value={unrealized} percentage={unrealizedPct} size="small" />}
+                  </div>
+                  <div>
+                    <span>Realized</span>
+                    {realized !== 0 ?
+                      <PnLDisplay value={realized} size="small" />
+                    : <strong className="neutral">-</strong>}
+                  </div>
+                </>
+              }
             </div>
 
             {loc && (
@@ -869,7 +939,6 @@ export default function CampaignDetailPage() {
                 ))}
               </div>
             )}
-
           </div>
         );
       })}
@@ -880,6 +949,17 @@ export default function CampaignDetailPage() {
 
   return (
     <div className="page-container">
+      {/* Header */}
+      <div className="page-header">
+        <div className="campaign-page-heading">
+          <Button icon={<ArrowLeftOutlined />} onClick={() => router.push("/campaigns")} type="text" />
+          <h1>{campaign.name}</h1>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} className="page-primary-action" onClick={() => setAddStockModal(true)}>
+          Add Stock
+        </Button>
+      </div>
+
       {showChartTimeRange && (
         <div className="stocks-time-range-bar">
           <div className="time-range-group">
@@ -894,17 +974,6 @@ export default function CampaignDetailPage() {
           </div>
         </div>
       )}
-
-      {/* Header */}
-      <div className="page-header">
-        <div className="campaign-page-heading">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => router.push("/campaigns")} type="text" />
-          <h1>{campaign.name}</h1>
-        </div>
-        <Button type="primary" icon={<PlusOutlined />} className="page-primary-action" onClick={() => setAddStockModal(true)}>
-          Add Stock
-        </Button>
-      </div>
 
       {/* Stats Row */}
       <div className="stats-grid animate-in">
@@ -940,14 +1009,13 @@ export default function CampaignDetailPage() {
           <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total P&L</div>
           {quotesPending ?
             <Skeleton.Input active size="large" style={{ width: 160 }} />
-          : <Statistic
-              prefix={stats.pnl >= 0 ? <RiseOutlined /> : <FallOutlined />}
-              value={stats.pnl}
-              precision={2}
-              valueStyle={{ color: stats.pnl >= 0 ? "#22c55e" : "#ef4444" }}
-              formatter={(v) => `${Number(v) >= 0 ? "+" : ""}$${Math.abs(Number(v)).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
-            />
-          }
+          : <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="large" />}
+        </Card>
+        <Card className="stat-card" bordered={false}>
+          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Annual P&L</div>
+          {quotesPending || periodPricesPending ?
+            <Skeleton.Input active size="large" style={{ width: 160 }} />
+          : <PnLDisplay value={annualPnlStats.pnl} percentage={annualPnlStats.pnlPercent} size="large" />}
         </Card>
         <Card className="stat-card" bordered={false}>
           <Statistic
@@ -1116,7 +1184,7 @@ export default function CampaignDetailPage() {
                     pagination={false}
                     expandable={stockExpandable}
                     rowClassName={getStockRowClassName}
-                    scroll={{ x: 1220 }}
+                    scroll={{ x: 1300 }}
                   />
                 </div>
                 <div className="mobile-stock-cards">{renderMobileStockCards(activeStocks)}</div>
@@ -1145,7 +1213,7 @@ export default function CampaignDetailPage() {
                       pagination={false}
                       expandable={stockExpandable}
                       rowClassName={getStockRowClassName}
-                      scroll={{ x: 1220 }}
+                      scroll={{ x: 1300 }}
                     />
                   </div>
                   <div className="mobile-stock-cards">{renderMobileStockCards(soldStocks)}</div>
@@ -1167,7 +1235,16 @@ export default function CampaignDetailPage() {
                 referencePrice: notification.referencePrice,
                 createdAt: notification.createdAt,
               }));
-              const currentPrice = quotes[stock.symbol]?.currentPrice;
+              const quote = quotes[stock.symbol];
+              const currentPrice = quote?.currentPrice;
+              const remaining = getRemainingShares(stock);
+              const lastDayMovement = getDisplayLastDayMovement(stock, quote);
+              const priceForPnl = currentPrice ?? stock.buyPrice;
+              const unrealized = remaining * (priceForPnl - stock.buyPrice);
+              const unrealizedPct = ((priceForPnl - stock.buyPrice) / stock.buyPrice) * 100;
+              const realized = getRealizedPnL(stock);
+              const realizedPct = getRealizedPnLPercent(stock);
+              const soldPrice = getAverageSoldPrice(stock);
               const triggeredCount =
                 currentPrice == null ? 0 : (
                   notifications.filter((notification) => {
@@ -1222,7 +1299,6 @@ export default function CampaignDetailPage() {
                           soldOut ? "rgba(127, 29, 29, 0.14)"
                           : starred ? "rgba(120, 53, 15, 0.18)"
                           : "#0f1629",
-                        borderRadius: 12,
                         border:
                           soldOut ? "1px solid rgba(248, 113, 113, 0.35)"
                           : starred ? "1px solid rgba(245, 158, 11, 0.42)"
@@ -1283,6 +1359,100 @@ export default function CampaignDetailPage() {
                         markers={markers}
                         alertRules={alertRules}
                       />
+                      {(soldOut || viewMode === "area") && (
+                        <div
+                          className={cn(
+                            "grid grid-cols-2 overflow-hidden",
+                            soldOut ? "border-destructive/30"
+                            : starred ? "border-amber-500/30"
+                            : "border-border",
+                          )}>
+                          {soldOut ?
+                            <>
+                              <div className="min-w-0 border border-border bg-card/50 p-2.5">
+                                <span className={METRIC_LABEL_CLASS}>Buy Price</span>
+                                <span className={cn(METRIC_VALUE_CLASS, "text-foreground")}>{formatCurrency(stock.buyPrice)}</span>
+                              </div>
+                              <div className="min-w-0 border border-border bg-card/50 p-2.5">
+                                <span className={METRIC_LABEL_CLASS}>Sold Price</span>
+                                <span className={cn(METRIC_VALUE_CLASS, "text-foreground")}>
+                                  {soldPrice != null ? formatCurrency(soldPrice) : "—"}
+                                </span>
+                              </div>
+                              <div className="min-w-0 border border-border bg-card/50 p-2.5 rounded-bl-lg">
+                                <span className={METRIC_LABEL_CLASS}>Current Price</span>
+                                {quotesPending ?
+                                  <QuoteCellSkeleton width={88} />
+                                : currentPrice != null ?
+                                  <span
+                                    className={cn(
+                                      METRIC_VALUE_CLASS,
+                                      currentPrice > stock.buyPrice && "text-green-500",
+                                      currentPrice < stock.buyPrice && "text-destructive",
+                                      currentPrice === stock.buyPrice && "text-muted-foreground",
+                                    )}>
+                                    {formatCurrency(currentPrice)}
+                                  </span>
+                                : <span className={cn(METRIC_VALUE_CLASS, "text-muted-foreground")}>—</span>}
+                              </div>
+                              <div
+                                className={cn(
+                                  "min-w-0 border !border-neutral-500/10 bg-card/50 p-2.5 rounded-br-lg",
+                                  getPnLToneClass(realized),
+                                )}>
+                                <span className={METRIC_LABEL_CLASS}>Realized P&L</span>
+                                {realized !== 0 ?
+                                  <PnLDisplay value={realized} percentage={realizedPct} size="small" />
+                                : <span className={cn(METRIC_VALUE_CLASS, "text-muted-foreground")}>—</span>}
+                              </div>
+                            </>
+                          : <>
+                              <div className="min-w-0 border border-border bg-card/50 p-2.5">
+                                <span className={METRIC_LABEL_CLASS}>Buy Price</span>
+                                <span className={cn(METRIC_VALUE_CLASS, "text-foreground")}>{formatCurrency(stock.buyPrice)}</span>
+                              </div>
+                              <div className={cn("min-w-0 border border-border p-2.5")}>
+                                <span className={METRIC_LABEL_CLASS}>Current Price</span>
+                                {quotesPending ?
+                                  <QuoteCellSkeleton width={88} />
+                                : currentPrice != null ?
+                                  <span
+                                    className={cn(
+                                      METRIC_VALUE_CLASS,
+                                      currentPrice > stock.buyPrice && "text-green-500",
+                                      currentPrice < stock.buyPrice && "text-destructive",
+                                      currentPrice === stock.buyPrice && "text-muted-foreground",
+                                    )}>
+                                    {formatCurrency(currentPrice)}
+                                  </span>
+                                : <span className={cn(METRIC_VALUE_CLASS, "text-muted-foreground")}>—</span>}
+                              </div>
+                              <div
+                                className={cn(
+                                  "min-w-0 border !border-neutral-500/10 bg-card/50 p-2.5 rounded-bl-lg",
+                                  lastDayMovement && getPnLToneClass(lastDayMovement.value),
+                                )}>
+                                <span className={METRIC_LABEL_CLASS}>Last Day</span>
+                                {quotesPending ?
+                                  <QuoteCellSkeleton width={88} />
+                                : lastDayMovement ?
+                                  <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="small" />
+                                : <span className={cn(METRIC_VALUE_CLASS, "text-muted-foreground")}>—</span>}
+                              </div>
+                              <div
+                                className={cn(
+                                  "min-w-0 border !border-neutral-500/10 bg-card/50 p-2.5 rounded-br-lg",
+                                  getPnLToneClass(unrealized),
+                                )}>
+                                <span className={METRIC_LABEL_CLASS}>Unrealized P&L</span>
+                                {quotesPending ?
+                                  <QuoteCellSkeleton width={88} />
+                                : <PnLDisplay value={unrealized} percentage={unrealizedPct} size="small" />}
+                              </div>
+                            </>
+                          }
+                        </div>
+                      )}
                     </div>
                   </Col>
                 </React.Fragment>
