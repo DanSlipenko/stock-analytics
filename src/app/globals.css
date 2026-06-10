@@ -1,6 +1,54 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--shadcn-accent);
+  --color-accent-foreground: var(--shadcn-accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--shadcn-border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
 
 :root {
+  --radius: 0.625rem;
+  --background: #0a0e1a;
+  --foreground: #e2e8f0;
+  --card: #111827;
+  --card-foreground: #e2e8f0;
+  --popover: #111827;
+  --popover-foreground: #e2e8f0;
+  --primary: #e2e8f0;
+  --primary-foreground: #0a0e1a;
+  --secondary: #1a2332;
+  --secondary-foreground: #e2e8f0;
+  --muted: #1a2332;
+  --muted-foreground: #94a3b8;
+  --shadcn-accent: #1a2332;
+  --shadcn-accent-foreground: #e2e8f0;
+  --destructive: #ef4444;
+  --shadcn-border: #1e2a3a;
+  --input: #1e2a3a;
+  --ring: #64748b;
   --bg-primary: #0a0e1a;
   --bg-secondary: #111827;
   --bg-tertiary: #1a2332;
@@ -13,10 +61,14 @@
   --border: #1e2a3a;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer base {
+  *,
+  *::before,
+  *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
 }
 
 html,
@@ -166,139 +218,6 @@ body {
 .mobile-header-brand,
 .mobile-bottom-nav {
   display: none;
-}
-
-/* ---- Campaign cards ---- */
-.campaign-card {
-  cursor: pointer;
-  transition: all 0.25s ease;
-  border: 1px solid var(--border);
-  height: 100%;
-  overflow: hidden;
-  background: radial-gradient(circle at top left, rgba(0, 212, 170, 0.08), transparent 34%), var(--bg-secondary);
-}
-
-.campaign-card:hover {
-  border-color: var(--accent);
-  box-shadow: 0 0 20px var(--accent-glow);
-  transform: translateY(-3px);
-}
-
-.campaign-card .ant-card-body {
-  padding: 20px;
-}
-
-.campaign-card .ant-card-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  background: rgba(10, 14, 26, 0.42);
-  border-top: 1px solid var(--border);
-}
-
-.campaign-card .ant-card-actions > li {
-  min-width: 0;
-  margin: 0;
-  padding: 10px 6px;
-}
-
-.campaign-card .ant-card-actions > li:not(:last-child) {
-  border-right: 1px solid var(--border);
-}
-
-.campaign-action-btn {
-  max-width: 100%;
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.campaign-action-btn .ant-btn-icon {
-  flex: 0 0 auto;
-}
-
-.campaign-card-header {
-  margin-bottom: 18px;
-  min-width: 0;
-}
-
-.campaign-card-title {
-  color: var(--text-primary);
-  font-size: 19px;
-  font-weight: 700;
-  line-height: 1.25;
-  margin-bottom: 10px;
-  overflow-wrap: anywhere;
-}
-
-.campaign-card-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-.campaign-pill {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  min-height: 26px;
-  padding: 4px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 999px;
-  background: rgba(15, 22, 41, 0.82);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.campaign-pill-accent {
-  border-color: rgba(0, 212, 170, 0.26);
-  background: rgba(0, 212, 170, 0.1);
-  color: #8ff3dc;
-}
-
-.campaign-pill-muted {
-  border-color: rgba(139, 92, 246, 0.24);
-  background: rgba(139, 92, 246, 0.1);
-  color: #c4b5fd;
-}
-
-.campaign-card-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
-  gap: 12px;
-  align-items: start;
-}
-
-.campaign-stat {
-  min-width: 0;
-}
-
-.campaign-stat .ant-statistic-content {
-  max-width: 100%;
-  overflow-wrap: anywhere;
-}
-
-.campaign-stat-label {
-  display: block;
-  color: var(--text-tertiary, #64748b);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-}
-
-.campaign-stat-pnl > div {
-  min-width: 0;
-}
-
-.campaign-stat-pnl span {
-  max-width: 100%;
-  flex-wrap: wrap;
-  overflow-wrap: anywhere;
 }
 
 .campaign-stock-row-starred > td {
@@ -510,22 +429,6 @@ body {
     padding: 20px 16px;
   }
 
-  .campaign-card .ant-card-body {
-    padding: 18px;
-  }
-
-  .campaign-card-stats {
-    grid-template-columns: 1fr;
-  }
-
-  .campaign-card .ant-card-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .campaign-card .ant-card-actions > li:not(:last-child) {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
 }
 
 @media (max-width: 1024px) {
