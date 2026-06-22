@@ -5,7 +5,8 @@
 export interface MoneyLocation {
   _id?: string;
   name: string;
-  type: 'PayPal' | 'Kraken' | 'Fidelity Roth Clara' | 'Fidelity Roth Dan' | 'Fidelity Dan' | 'Charles Schwab';
+  // The asset / institution this location represents (e.g. "Fidelity Dan").
+  type: string;
 }
 
 export interface Transaction {
@@ -34,6 +35,7 @@ export interface CampaignStock {
   buyDate: string;
   locationId: string;
   isStarred?: boolean;
+  prepareToSell?: boolean;
   transactions: Transaction[];
   notifications?: StockNotification[];
 }
@@ -44,6 +46,13 @@ export interface Campaign {
   startDate: string;
   moneyLocations: MoneyLocation[];
   stocks: CampaignStock[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Asset {
+  _id?: string;
+  name: string;
   createdAt?: string;
   updatedAt?: string;
 }

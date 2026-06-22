@@ -5,6 +5,7 @@ import { Modal, Form, Input, InputNumber, DatePicker, Select, Space, Button, mes
 import SymbolSearch from "../shared/SymbolSearch";
 import { Campaign, CampaignStock } from "@/types";
 import { useStore } from "@/context/StoreContext";
+import { assetOptions, institutionOf, resolveAssetLocation } from "@/lib/assets";
 
 interface AddStockModalProps {
   open: boolean;
@@ -15,29 +16,28 @@ interface AddStockModalProps {
 
 export default function AddStockModal({ open, onClose, campaign, stock }: AddStockModalProps) {
   const [form] = Form.useForm();
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   const [loading, setLoading] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const isAddingToExistingStock = Boolean(stock);
 
-  const locationOptions = useMemo(() => {
-    return campaign.moneyLocations.map((loc) => ({
-      label: `${loc.name} (${loc.type})`,
-      value: loc._id,
-    }));
-  }, [campaign.moneyLocations]);
+  const assetChoices = useMemo(
+    () => assetOptions(state.campaigns, state.assets.map((a) => a.name)).map((name) => ({ label: name, value: name })),
+    [state.campaigns, state.assets],
+  );
 
   useEffect(() => {
     if (open && stock) {
       setSelectedSymbol(stock.symbol);
-      form.setFieldsValue({ locationId: stock.locationId || undefined });
+      const location = campaign.moneyLocations.find((loc) => loc._id === stock.locationId);
+      form.setFieldsValue({ asset: location ? institutionOf(location) : undefined });
     }
 
     if (!open) {
       form.resetFields();
       setSelectedSymbol("");
     }
-  }, [form, open, stock]);
+  }, [form, open, stock, campaign.moneyLocations]);
 
   const handleSubmit = async () => {
     try {
@@ -50,12 +50,15 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
 
       setLoading(true);
 
+      const { locationId, moneyLocations } =
+        values.asset ? resolveAssetLocation(campaign, values.asset) : { locationId: null, moneyLocations: campaign.moneyLocations };
+
       const newStock = {
         symbol: selectedSymbol,
         shares: values.shares,
         buyPrice: values.buyPrice,
         buyDate: values.buyDate?.toISOString() || new Date().toISOString(),
-        locationId: values.locationId || null,
+        locationId,
         transactions: [],
       };
 
@@ -64,7 +67,7 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
       const res = await fetch(`/api/campaigns/${campaign._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stocks: updatedStocks }),
+        body: JSON.stringify({ stocks: updatedStocks, moneyLocations }),
       });
 
       if (res.ok) {
@@ -119,11 +122,15 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
           <DatePicker style={{ width: "100%" }} size="large" />
         </Form.Item>
 
-        {locationOptions.length > 0 && (
-          <Form.Item name="locationId" label="Money Location">
-            <Select placeholder="Select where this stock is held" options={locationOptions} size="large" allowClear />
-          </Form.Item>
-        )}
+        <Form.Item name="asset" label="Asset" rules={[{ required: true, message: "Pick which asset holds this stock" }]}>
+          <Select
+            placeholder="Select an asset"
+            options={assetChoices}
+            size="large"
+            showSearch
+            optionFilterProp="label"
+          />
+        </Form.Item>
 
         <Space style={{ width: "100%", justifyContent: "flex-end", marginTop: 8 }}>
           <Button onClick={onClose}>Cancel</Button>

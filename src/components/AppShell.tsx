@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Layout, Menu } from "antd";
-import { DashboardOutlined, FolderOutlined, EyeOutlined, BellOutlined } from "@ant-design/icons";
+import { DashboardOutlined, FolderOutlined, EyeOutlined, BellOutlined, WalletOutlined } from "@ant-design/icons";
 import { usePathname, useRouter } from "next/navigation";
 import NotificationBell from "@/components/shared/NotificationBell";
 import { useAlertChecker } from "@/hooks/useAlertChecker";
@@ -27,6 +27,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       key: "/campaigns",
       icon: <FolderOutlined />,
       label: "Campaigns",
+    },
+    {
+      key: "/assets",
+      icon: <WalletOutlined />,
+      label: "Assets",
     },
     {
       key: "/watchlist",

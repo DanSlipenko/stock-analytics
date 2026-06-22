@@ -1,13 +1,14 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from 'react';
-import { Campaign, PriceAlert, WatchlistItem } from '@/types';
+import { Asset, Campaign, PriceAlert, WatchlistItem } from '@/types';
 
 // ---- State shape ----
 interface StoreState {
   campaigns: Campaign[];
   alerts: PriceAlert[];
   watchlist: WatchlistItem[];
+  assets: Asset[];
   loading: boolean;
   triggeredAlerts: PriceAlert[];
 }
@@ -17,6 +18,7 @@ type Action =
   | { type: 'SET_CAMPAIGNS'; payload: Campaign[] }
   | { type: 'SET_ALERTS'; payload: PriceAlert[] }
   | { type: 'SET_WATCHLIST'; payload: WatchlistItem[] }
+  | { type: 'SET_ASSETS'; payload: Asset[] }
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'ADD_CAMPAIGN'; payload: Campaign }
   | { type: 'UPDATE_CAMPAIGN'; payload: Campaign }
@@ -26,12 +28,16 @@ type Action =
   | { type: 'DELETE_ALERT'; payload: string }
   | { type: 'ADD_WATCHLIST_ITEM'; payload: WatchlistItem }
   | { type: 'DELETE_WATCHLIST_ITEM'; payload: string }
+  | { type: 'ADD_ASSET'; payload: Asset }
+  | { type: 'UPDATE_ASSET'; payload: Asset }
+  | { type: 'DELETE_ASSET'; payload: string }
   | { type: 'ADD_TRIGGERED_ALERT'; payload: PriceAlert };
 
 const initialState: StoreState = {
   campaigns: [],
   alerts: [],
   watchlist: [],
+  assets: [],
   loading: true,
   triggeredAlerts: [],
 };
@@ -44,6 +50,8 @@ function reducer(state: StoreState, action: Action): StoreState {
       return { ...state, alerts: action.payload };
     case 'SET_WATCHLIST':
       return { ...state, watchlist: action.payload };
+    case 'SET_ASSETS':
+      return { ...state, assets: action.payload };
     case 'SET_LOADING':
       return { ...state, loading: action.payload };
     case 'ADD_CAMPAIGN':
@@ -81,6 +89,15 @@ function reducer(state: StoreState, action: Action): StoreState {
         ...state,
         watchlist: state.watchlist.filter((w) => w._id !== action.payload),
       };
+    case 'ADD_ASSET':
+      return { ...state, assets: [...state.assets, action.payload].sort((a, b) => a.name.localeCompare(b.name)) };
+    case 'UPDATE_ASSET':
+      return {
+        ...state,
+        assets: state.assets.map((a) => (a._id === action.payload._id ? action.payload : a)),
+      };
+    case 'DELETE_ASSET':
+      return { ...state, assets: state.assets.filter((a) => a._id !== action.payload) };
     case 'ADD_TRIGGERED_ALERT':
       return {
         ...state,
@@ -98,6 +115,7 @@ interface StoreContextType {
   fetchCampaigns: () => Promise<void>;
   fetchAlerts: () => Promise<void>;
   fetchWatchlist: () => Promise<void>;
+  fetchAssets: () => Promise<void>;
 }
 
 const StoreContext = createContext<StoreContextType | null>(null);
@@ -141,17 +159,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const fetchAssets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/assets');
+      if (res.ok) {
+        const data = await res.json();
+        dispatch({ type: 'SET_ASSETS', payload: data });
+      }
+    } catch (e) {
+      console.error('Failed to fetch assets:', e);
+    }
+  }, []);
+
   useEffect(() => {
     const loadAll = async () => {
       dispatch({ type: 'SET_LOADING', payload: true });
-      await Promise.all([fetchCampaigns(), fetchAlerts(), fetchWatchlist()]);
+      await Promise.all([fetchCampaigns(), fetchAlerts(), fetchWatchlist(), fetchAssets()]);
       dispatch({ type: 'SET_LOADING', payload: false });
     };
     loadAll();
-  }, [fetchCampaigns, fetchAlerts, fetchWatchlist]);
+  }, [fetchCampaigns, fetchAlerts, fetchWatchlist, fetchAssets]);
 
   return (
-    <StoreContext.Provider value={{ state, dispatch, fetchCampaigns, fetchAlerts, fetchWatchlist }}>
+    <StoreContext.Provider value={{ state, dispatch, fetchCampaigns, fetchAlerts, fetchWatchlist, fetchAssets }}>
       {children}
     </StoreContext.Provider>
   );

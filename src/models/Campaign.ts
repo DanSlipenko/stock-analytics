@@ -25,13 +25,15 @@ const CampaignStockSchema = new Schema({
   buyDate:      { type: Date, default: Date.now },
   locationId:   { type: Schema.Types.ObjectId },
   isStarred:    { type: Boolean, default: false },
+  prepareToSell: { type: Boolean, default: false },
   transactions: [TransactionSchema],
   notifications: [StockNotificationSchema],
 });
 
 const MoneyLocationSchema = new Schema({
+  // An asset/institution. `type` is the canonical asset identifier; `name` mirrors it.
   name: { type: String, required: true },
-  type: { type: String, enum: ['PayPal', 'Kraken', 'Fidelity Roth Clara', 'Fidelity Roth Dan', 'Fidelity Dan', 'Charles Schwab'], default: 'Fidelity Dan' },
+  type: { type: String, default: 'Fidelity Dan' },
 });
 
 // ---- Main Campaign Schema ----
@@ -52,6 +54,7 @@ export interface ICampaign extends Document {
     buyDate: Date;
     locationId: mongoose.Types.ObjectId;
     isStarred?: boolean;
+    prepareToSell?: boolean;
     transactions: Array<{
       _id: mongoose.Types.ObjectId;
       type: string;

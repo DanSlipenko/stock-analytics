@@ -5,6 +5,7 @@ import { Modal, Form, InputNumber, DatePicker, Select, Space, Button, message, D
 import { EditOutlined } from "@ant-design/icons";
 import { Campaign, CampaignStock } from "@/types";
 import { useStore } from "@/context/StoreContext";
+import { assetOptions, institutionOf, resolveAssetLocation } from "@/lib/assets";
 import dayjs from "dayjs";
 
 interface EditStockModalProps {
@@ -17,26 +18,25 @@ interface EditStockModalProps {
 
 export default function EditStockModal({ open, onClose, campaign, stock, onEditTransaction }: EditStockModalProps) {
   const [form] = Form.useForm();
-  const { dispatch } = useStore();
+  const { state, dispatch } = useStore();
   const [loading, setLoading] = useState(false);
 
-  const locationOptions = useMemo(() => {
-    return campaign.moneyLocations.map((loc) => ({
-      label: `${loc.name} (${loc.type})`,
-      value: loc._id,
-    }));
-  }, [campaign.moneyLocations]);
+  const assetChoices = useMemo(
+    () => assetOptions(state.campaigns, state.assets.map((a) => a.name)).map((name) => ({ label: name, value: name })),
+    [state.campaigns, state.assets],
+  );
 
   useEffect(() => {
     if (stock && open) {
+      const location = campaign.moneyLocations.find((loc) => loc._id === stock.locationId);
       form.setFieldsValue({
         shares: stock.shares,
         buyPrice: stock.buyPrice,
         buyDate: stock.buyDate ? dayjs(stock.buyDate) : null,
-        locationId: stock.locationId,
+        asset: location ? institutionOf(location) : undefined,
       });
     }
-  }, [stock, open, form]);
+  }, [stock, open, form, campaign.moneyLocations]);
 
   const handleSubmit = async () => {
     if (!stock) return;
@@ -45,6 +45,9 @@ export default function EditStockModal({ open, onClose, campaign, stock, onEditT
       const values = await form.validateFields();
       setLoading(true);
 
+      const { locationId, moneyLocations } =
+        values.asset ? resolveAssetLocation(campaign, values.asset) : { locationId: null, moneyLocations: campaign.moneyLocations };
+
       const updatedStocks = campaign.stocks.map((s) => {
         if (s._id === stock._id) {
           return {
@@ -52,7 +55,7 @@ export default function EditStockModal({ open, onClose, campaign, stock, onEditT
             shares: values.shares,
             buyPrice: values.buyPrice,
             buyDate: values.buyDate?.toISOString() || stock.buyDate,
-            locationId: values.locationId || null,
+            locationId,
           };
         }
         return s;
@@ -61,7 +64,7 @@ export default function EditStockModal({ open, onClose, campaign, stock, onEditT
       const res = await fetch(`/api/campaigns/${campaign._id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stocks: updatedStocks }),
+        body: JSON.stringify({ stocks: updatedStocks, moneyLocations }),
       });
 
       if (res.ok) {
@@ -101,11 +104,9 @@ export default function EditStockModal({ open, onClose, campaign, stock, onEditT
           <DatePicker style={{ width: "100%" }} size="large" />
         </Form.Item>
 
-        {locationOptions.length > 0 && (
-          <Form.Item name="locationId" label="Money Location">
-            <Select placeholder="Select where this stock is held" options={locationOptions} size="large" allowClear />
-          </Form.Item>
-        )}
+        <Form.Item name="asset" label="Asset" rules={[{ required: true, message: "Pick which asset holds this stock" }]}>
+          <Select placeholder="Select an asset" options={assetChoices} size="large" showSearch optionFilterProp="label" />
+        </Form.Item>
 
         {stock.transactions && stock.transactions.length > 0 && (
           <>

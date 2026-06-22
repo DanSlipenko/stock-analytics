@@ -245,6 +245,15 @@ body {
   background: rgba(120, 53, 15, 0.28) !important;
 }
 
+.asset-prepare-sell-row > td {
+  background: rgba(120, 53, 15, 0.2) !important;
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+.asset-prepare-sell-row:hover > td {
+  background: rgba(120, 53, 15, 0.3) !important;
+}
+
 .campaign-stock-row-sold > td {
   background: rgba(127, 29, 29, 0.12) !important;
 }
