@@ -1,11 +1,11 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Card, Button, Table, Tag, Popconfirm, Modal, Form, InputNumber, Select, Radio, Empty, Spin, message } from 'antd';
+import { Card, Button, Tag, Popconfirm, Modal, Form, InputNumber, Radio, Spin, message } from 'antd';
 import { PlusOutlined, DeleteOutlined, BellOutlined } from '@ant-design/icons';
 import { useStore } from '@/context/StoreContext';
-import { useStockQuote } from '@/hooks/useStockQuote';
 import SymbolSearch from '@/components/shared/SymbolSearch';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 export default function AlertsPage() {
   const { state, dispatch } = useStore();
@@ -60,32 +60,6 @@ export default function AlertsPage() {
 
   if (state.loading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}><Spin size="large" /></div>;
 
-  const columns = [
-    { title: 'Symbol', dataIndex: 'symbol', key: 'symbol', render: (s: string) => <span style={{ fontWeight: 700 }}>{s}</span> },
-    {
-      title: 'Condition', key: 'condition',
-      render: (_: unknown, record: { type: string; targetPrice?: number; targetPercent?: number }) => (
-        <span style={{ color: record.type === 'above' ? '#22c55e' : '#ef4444' }}>
-          {record.type === 'above' ? 'Goes above' : 'Drops below'}{' '}
-          <strong>{record.targetPrice != null ? `$${record.targetPrice.toFixed(2)}` : `${record.targetPercent}%`}</strong>
-        </span>
-      ),
-    },
-    { title: 'Reference Price', dataIndex: 'referencePrice', key: 'ref', render: (v: number) => `$${v.toFixed(2)}` },
-    { title: 'Status', key: 'status', render: (_: unknown, record: { triggered: boolean }) => (
-      record.triggered ? <Tag color="red">Triggered</Tag> : <Tag color="green">Active</Tag>
-    ) },
-    { title: 'Created', dataIndex: 'createdAt', key: 'date', render: (d: string) => <span style={{ color: '#94a3b8' }}>{new Date(d).toLocaleDateString()}</span> },
-    {
-      title: '', key: 'actions', width: 80,
-      render: (_: unknown, record: { _id?: string }) => (
-        <Popconfirm title="Delete alert?" onConfirm={() => handleDelete(record._id!)}>
-          <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-        </Popconfirm>
-      ),
-    },
-  ];
-
   return (
     <div className="page-container">
       <div className="page-header">
@@ -100,12 +74,42 @@ export default function AlertsPage() {
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModal(true)}>Create Alert</Button>
         </div>
       ) : (
-        <Card bordered={false}>
-          <Table
-            dataSource={state.alerts.map((a) => ({ ...a, key: a._id }))}
-            columns={columns}
-            pagination={false}
-          />
+        <Card className="data-table-card" bordered={false}>
+          <Table aria-label="Price alerts" className="min-w-[760px] tabular-nums">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Symbol</TableHead>
+                <TableHead scope="col">Condition</TableHead>
+                <TableHead scope="col" className="text-right">Reference Price</TableHead>
+                <TableHead scope="col">Status</TableHead>
+                <TableHead scope="col">Created</TableHead>
+                <TableHead scope="col" className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {state.alerts.map(alert => (
+                <TableRow key={alert._id ?? `${alert.symbol}-${alert.createdAt}`}>
+                  <TableCell className="font-bold">{alert.symbol}</TableCell>
+                  <TableCell className={alert.type === 'above' ? 'text-green-500' : 'text-destructive'}>
+                    {alert.type === 'above' ? 'Goes above' : 'Drops below'}{' '}
+                    <strong>{alert.targetPrice != null ? `$${alert.targetPrice.toFixed(2)}` : `${alert.targetPercent}%`}</strong>
+                  </TableCell>
+                  <TableCell className="text-right">${alert.referencePrice.toFixed(2)}</TableCell>
+                  <TableCell>{alert.triggered ? <Tag color="red">Triggered</Tag> : <Tag color="green">Active</Tag>}</TableCell>
+                  <TableCell className="text-muted-foreground">{alert.createdAt ? new Date(alert.createdAt).toLocaleDateString() : '—'}</TableCell>
+                  <TableCell className="text-right">
+                    <Popconfirm title="Delete alert?" onConfirm={() => alert._id && handleDelete(alert._id)}>
+                      <Button
+                        type="text" danger icon={<DeleteOutlined />} size="small"
+                        aria-label={`Delete ${alert.symbol} alert`}
+                        style={{ width: 36, height: 36 }}
+                      />
+                    </Popconfirm>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </Card>
       )}
 

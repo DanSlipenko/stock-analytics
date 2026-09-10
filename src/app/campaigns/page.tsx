@@ -1,25 +1,23 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Card, Row, Col, Statistic, Spin, Skeleton, Popconfirm, message, Tag } from "antd";
-import {
-  PlusOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  FolderOutlined,
-  RightOutlined,
-  FundOutlined,
-  UpOutlined,
-} from "@ant-design/icons";
+import { Spin, Skeleton, message } from "antd";
+import { PlusOutlined, FolderOutlined } from "@ant-design/icons";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
 import { usePeriodPrices } from "@/hooks/usePeriodPrices";
 import CreateCampaignModal from "@/components/campaigns/CreateCampaignModal";
+import CampaignActionsDropdown from "@/components/campaigns/CampaignActionsDropdown";
+import CampaignSummary from "@/components/campaigns/CampaignSummary";
+import MetaLine from "@/components/shared/MetaLine";
 import PnLDisplay from "@/components/shared/PnLDisplay";
 import { calculateCampaignStats, calculateCampaignMonthlyChange, calculateCampaignAnnualPnL } from "@/lib/campaignStats";
-import { Campaign, CampaignStock, StockQuote } from "@/types";
+import { formatStockSummary, formatUsd, getCampaignMetaParts } from "@/lib/campaignFormat";
+import { getRemainingShares } from "@/lib/shares";
+import { Campaign, StockQuote } from "@/types";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type DayChangeStats = {
   value: number;
@@ -29,15 +27,16 @@ type DayChangeStats = {
 
 const isFiniteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
-const getSoldShares = (stock: CampaignStock) => stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
-
-const getRemainingShares = (stock: CampaignStock) => Math.max(stock.shares - getSoldShares(stock), 0);
 
 const isCampaignFullySoldOut = (campaign: Campaign) =>
   campaign.stocks.length > 0 && campaign.stocks.every((stock) => getRemainingShares(stock) <= 0);
 
-const getActiveStockCount = (campaign: Campaign) =>
-  campaign.stocks.filter((stock) => getRemainingShares(stock) > 0).length;
+const isCampaignClosed = (campaign: Campaign) => campaign.closed === true;
+
+/* Closed by hand or sold out entirely — either way it belongs at the bottom. */
+const isCampaignInactive = (campaign: Campaign) => isCampaignClosed(campaign) || isCampaignFullySoldOut(campaign);
+
+const getActiveStockCount = (campaign: Campaign) => campaign.stocks.filter((stock) => getRemainingShares(stock) > 0).length;
 
 const CAMPAIGN_COLLAPSED_STORAGE_KEY = "campaign-collapsed";
 
@@ -56,7 +55,7 @@ const getIsCollapsed = (campaign: Campaign, collapsedById: Record<string, boolea
   const id = campaign._id;
   if (!id) return false;
   if (id in collapsedById) return collapsedById[id];
-  return isCampaignFullySoldOut(campaign);
+  return isCampaignInactive(campaign);
 };
 
 const getQuoteDayChange = (quote?: StockQuote) => {
@@ -97,6 +96,9 @@ const calculateCampaignDayChange = (campaign: Campaign, quotes: Record<string, S
   };
 };
 
+/* Filled accent capsule — the page's one prominent action. */
+const PRIMARY_ACTION_CLASS = "rounded-full bg-[#f5f5f5] px-5 font-semibold text-[#0a0e1a] hover:bg-white max-sm:h-11";
+
 export default function CampaignsPage() {
   const { state, dispatch } = useStore();
   const router = useRouter();
@@ -108,11 +110,9 @@ export default function CampaignsPage() {
     setCollapsedById(loadCollapsedState());
   }, []);
 
-  const toggleCampaignCollapsed = useCallback((campaignId: string) => {
+  const setCampaignCollapsed = useCallback((campaignId: string, resolve: (current: Record<string, boolean>) => boolean) => {
     setCollapsedById((current) => {
-      const campaign = state.campaigns.find((item) => item._id === campaignId);
-      const nextCollapsed = campaign ? !getIsCollapsed(campaign, current) : true;
-      const next = { ...current, [campaignId]: nextCollapsed };
+      const next = { ...current, [campaignId]: resolve(current) };
 
       try {
         window.localStorage.setItem(CAMPAIGN_COLLAPSED_STORAGE_KEY, JSON.stringify(next));
@@ -122,20 +122,27 @@ export default function CampaignsPage() {
 
       return next;
     });
-  }, [state.campaigns]);
+  }, []);
 
-  const orderedCampaigns = useMemo(() => {
-    return [...state.campaigns].sort((a, b) => {
-      const aCollapsed = getIsCollapsed(a, collapsedById);
-      const bCollapsed = getIsCollapsed(b, collapsedById);
-      if (aCollapsed !== bCollapsed) return Number(aCollapsed) - Number(bCollapsed);
+  const toggleCampaignCollapsed = useCallback(
+    (campaignId: string) => {
+      setCampaignCollapsed(campaignId, (current) => {
+        const campaign = state.campaigns.find((item) => item._id === campaignId);
+        return campaign ? !getIsCollapsed(campaign, current) : true;
+      });
+    },
+    [setCampaignCollapsed, state.campaigns],
+  );
 
-      const aSoldOut = isCampaignFullySoldOut(a);
-      const bSoldOut = isCampaignFullySoldOut(b);
-      if (aSoldOut !== bSoldOut) return Number(aSoldOut) - Number(bSoldOut);
+  // Active campaigns lead; closed and sold-out ones get their own section. Hidden cards sink within each group.
+  const { activeCampaigns, closedCampaigns } = useMemo(() => {
+    const byCollapsed = (a: Campaign, b: Campaign) =>
+      Number(getIsCollapsed(a, collapsedById)) - Number(getIsCollapsed(b, collapsedById));
 
-      return 0;
-    });
+    return {
+      activeCampaigns: state.campaigns.filter((campaign) => !isCampaignInactive(campaign)).sort(byCollapsed),
+      closedCampaigns: state.campaigns.filter(isCampaignInactive).sort(byCollapsed),
+    };
   }, [state.campaigns, collapsedById]);
 
   // Collect all symbols
@@ -164,7 +171,7 @@ export default function CampaignsPage() {
         return {
           totalCurrentValue: totals.totalCurrentValue + stats.currentValue,
           totalPnl: totals.totalPnl + stats.pnl,
-          totalPnlBasis: totals.totalPnlBasis + stats.invested + Math.abs(stats.realized),
+          totalPnlBasis: totals.totalPnlBasis + stats.costBasis,
           dayChange: totals.dayChange + dayChange.value,
           dayChangeBasis: totals.dayChangeBasis + dayChange.basis,
           monthChange: totals.monthChange + monthChange.value,
@@ -195,6 +202,53 @@ export default function CampaignsPage() {
   const portfolioAnnualPnlPercent =
     portfolioStats.annualPnlBasis > 0 ? (portfolioStats.annualPnl / portfolioStats.annualPnlBasis) * 100 : 0;
 
+  // Ordered by time horizon, shortest first.
+  const summaryMetrics = [
+    { label: "Today", value: portfolioStats.dayChange, percentage: portfolioDayChangePercent, pending: quotesPending },
+    {
+      label: "This Month",
+      value: portfolioStats.monthChange,
+      percentage: portfolioMonthChangePercent,
+      pending: quotesPending || periodPricesPending,
+    },
+    {
+      label: "This Year",
+      value: portfolioStats.annualPnl,
+      percentage: portfolioAnnualPnlPercent,
+      pending: quotesPending || periodPricesPending,
+    },
+    { label: "Total P&L", value: portfolioStats.totalPnl, percentage: portfolioPnlPercent, pending: quotesPending },
+  ];
+
+  const handleToggleClosed = async (campaign: Campaign) => {
+    const id = campaign._id;
+    if (!id) return;
+
+    const nextClosed = !isCampaignClosed(campaign);
+
+    try {
+      const res = await fetch(`/api/campaigns/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ closed: nextClosed }),
+      });
+
+      if (!res.ok) {
+        message.error(nextClosed ? "Could not close campaign" : "Could not reopen campaign");
+        return;
+      }
+
+      const updated: Campaign = await res.json();
+      dispatch({ type: "UPDATE_CAMPAIGN", payload: updated });
+      // Closing tucks the card away; reopening brings it back expanded.
+      setCampaignCollapsed(id, () => nextClosed);
+      message.success(nextClosed ? `"${campaign.name}" closed` : `"${campaign.name}" reopened`);
+    } catch (e) {
+      console.error("Toggle campaign closed error:", e);
+      message.error("Something went wrong");
+    }
+  };
+
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/campaigns/${id}`, { method: "DELETE" });
@@ -207,6 +261,97 @@ export default function CampaignsPage() {
     }
   };
 
+  const renderCampaign = (campaign: Campaign) => {
+    const stats = calculateCampaignStats(campaign, quotes);
+    const dayChange = calculateCampaignDayChange(campaign, quotes);
+    const collapsed = getIsCollapsed(campaign, collapsedById);
+    const fullySoldOut = isCampaignFullySoldOut(campaign);
+    const closed = isCampaignClosed(campaign);
+    const inactive = isCampaignInactive(campaign);
+    const activeStockCount = getActiveStockCount(campaign);
+    const metaParts =
+      collapsed ?
+        [formatStockSummary(activeStockCount, campaign.stocks.length)]
+      : getCampaignMetaParts(campaign, activeStockCount);
+    const valueSkeleton = <Skeleton.Input active size="small" style={{ width: 120 }} />;
+
+    return (
+      <article
+        key={campaign._id}
+        className={cn(
+          "campaign-list-card",
+          collapsed && "campaign-list-card-collapsed",
+          inactive && "campaign-list-card-inactive",
+        )}
+        onClick={(event) => {
+          // Let buttons, menus and popconfirms handle their own clicks.
+          if ((event.target as HTMLElement).closest("button, a, input, [role='menu'], [role='menuitem']")) return;
+          router.push(`/campaigns/${campaign._id}`);
+        }}>
+        <div className="campaign-list-card-header">
+          <div className="campaign-list-card-heading">
+            <div className="campaign-list-card-title-row">
+              <button type="button" className="campaign-list-card-title" onClick={() => router.push(`/campaigns/${campaign._id}`)}>
+                {campaign.name}
+              </button>
+              {closed && <span className="campaign-status">Closed</span>}
+              {fullySoldOut && <span className="campaign-status">Fully Sold</span>}
+            </div>
+            <MetaLine parts={metaParts} className="campaign-list-card-subtitle" />
+          </div>
+
+          {collapsed && (
+            <div className="campaign-list-card-summary">
+              {quotesPending ?
+                valueSkeleton
+              : fullySoldOut ?
+                <PnLDisplay value={stats.realized} />
+              : <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} />}
+            </div>
+          )}
+
+          <div className="campaign-list-card-menu">
+            <CampaignActionsDropdown
+              campaignName={campaign.name}
+              collapsed={collapsed}
+              closed={closed}
+              onEdit={() => setEditingCampaign(campaign)}
+              onToggleCollapsed={() => campaign._id && toggleCampaignCollapsed(campaign._id)}
+              onToggleClosed={() => handleToggleClosed(campaign)}
+              onDelete={() => handleDelete(campaign._id!)}
+            />
+          </div>
+        </div>
+
+        {!collapsed && (
+          <div className="campaign-list-card-body">
+            <dl className="campaign-list-card-hero">
+              <dt>In Stocks</dt>
+              <dd>{quotesPending ? valueSkeleton : formatUsd(stats.currentValue, 0)}</dd>
+            </dl>
+
+            <dl className="campaign-list-card-rows">
+              <div className="campaign-list-card-row">
+                <dt>Invested</dt>
+                <dd>{formatUsd(stats.invested, 0)}</dd>
+              </div>
+              <div className="campaign-list-card-row">
+                <dt>Total P&L</dt>
+                <dd>{quotesPending ? valueSkeleton : <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} />}</dd>
+              </div>
+              <div className="campaign-list-card-row">
+                <dt>Today</dt>
+                <dd>
+                  {quotesPending ? valueSkeleton : <PnLDisplay value={dayChange.value} percentage={dayChange.percentage} />}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        )}
+      </article>
+    );
+  };
+
   if (state.loading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
@@ -216,10 +361,10 @@ export default function CampaignsPage() {
   }
 
   return (
-    <div className="page-container">
+    <div className="page-container campaigns-page campaigns-container">
       <div className="page-header">
         <h1>Campaigns</h1>
-        <Button variant="default" size="lg" onClick={() => setCreateModal(true)}>
+        <Button className={PRIMARY_ACTION_CLASS} onClick={() => setCreateModal(true)}>
           <PlusOutlined />
           New Campaign
         </Button>
@@ -229,223 +374,29 @@ export default function CampaignsPage() {
         <div className="empty-state">
           <FolderOutlined className="empty-state-icon" />
           <p className="empty-state-text">No campaigns yet. Create your first campaign to start tracking stocks.</p>
-          <Button variant="default" size="lg" onClick={() => setCreateModal(true)}>
+          <Button className={PRIMARY_ACTION_CLASS} onClick={() => setCreateModal(true)}>
             <PlusOutlined />
             Create Campaign
           </Button>
         </div>
       : <>
-          <div className="stats-grid animate-in">
-            <Card className="stat-card" bordered={false}>
-              <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total in Stocks</div>
-              {quotesPending ?
-                <Skeleton.Input active size="large" style={{ width: 160 }} />
-              : <Statistic
-                  value={portfolioStats.totalCurrentValue}
-                  prefix={<FundOutlined style={{ color: "#00d4aa" }} />}
-                  precision={2}
-                  valueStyle={{ color: "#e2e8f0" }}
-                  formatter={(value) => `$${Number(value).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
-                />
-              }
-            </Card>
-            <Card className="stat-card" bordered={false}>
-              <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Avg Day Change</div>
-              {quotesPending ?
-                <Skeleton.Input active size="large" style={{ width: 160 }} />
-              : <PnLDisplay value={portfolioStats.dayChange} percentage={portfolioDayChangePercent} size="large" />}
-            </Card>
-            <Card className="stat-card" bordered={false}>
-              <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Monthly Change</div>
-              {quotesPending || periodPricesPending ?
-                <Skeleton.Input active size="large" style={{ width: 160 }} />
-              : <PnLDisplay value={portfolioStats.monthChange} percentage={portfolioMonthChangePercent} size="large" />}
-            </Card>
-            <Card className="stat-card" bordered={false}>
-              <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total P&L</div>
-              {quotesPending ?
-                <Skeleton.Input active size="large" style={{ width: 160 }} />
-              : <PnLDisplay value={portfolioStats.totalPnl} percentage={portfolioPnlPercent} size="large" />}
-            </Card>
-            <Card className="stat-card" bordered={false}>
-              <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Annual P&L</div>
-              {quotesPending || periodPricesPending ?
-                <Skeleton.Input active size="large" style={{ width: 160 }} />
-              : <PnLDisplay value={portfolioStats.annualPnl} percentage={portfolioAnnualPnlPercent} size="large" />}
-            </Card>
-          </div>
+          <CampaignSummary
+            label="Total in Stocks"
+            value={portfolioStats.totalCurrentValue}
+            pending={quotesPending}
+            metrics={summaryMetrics}
+          />
 
-          <Row gutter={[20, 20]}>
-            {orderedCampaigns.map((campaign) => {
-              const stats = calculateCampaignStats(campaign, quotes);
-              const dayChange = calculateCampaignDayChange(campaign, quotes);
-              const collapsed = getIsCollapsed(campaign, collapsedById);
-              const fullySoldOut = isCampaignFullySoldOut(campaign);
-              const activeStockCount = getActiveStockCount(campaign);
+          {activeCampaigns.length > 0 && <div className="campaigns-grid">{activeCampaigns.map(renderCampaign)}</div>}
 
-              return (
-                <Col xs={24} lg={collapsed ? 24 : 12} xl={collapsed ? 24 : 8} key={campaign._id}>
-                  <div
-                    className={`campaign-list-card ${collapsed ? "campaign-list-card-collapsed" : ""} ${
-                      fullySoldOut ? "campaign-list-card-inactive" : ""
-                    }`}>
-                    <div className="campaign-list-card-header">
-                      <button
-                        type="button"
-                        className="campaign-list-card-toggle"
-                        aria-label={collapsed ? "Expand campaign" : "Collapse campaign"}
-                        onClick={() => campaign._id && toggleCampaignCollapsed(campaign._id)}>
-                        {collapsed ?
-                          <RightOutlined />
-                        : <UpOutlined />}
-                      </button>
-
-                      <button
-                        type="button"
-                        className="campaign-list-card-title"
-                        onClick={() => router.push(`/campaigns/${campaign._id}`)}>
-                        {campaign.name}
-                      </button>
-
-                      <div className="campaign-list-card-badges">
-                        {fullySoldOut && <Tag color="default">Fully Sold</Tag>}
-                        <span className="campaign-list-card-meta">
-                          {activeStockCount > 0 ?
-                            `${activeStockCount} active`
-                          : `${campaign.stocks.length} stocks`}
-                        </span>
-                      </div>
-
-                      {collapsed && (
-                        <div className="campaign-list-card-summary">
-                          {quotesPending ?
-                            <Skeleton.Input active size="small" style={{ width: 120 }} />
-                          : fullySoldOut ?
-                            <PnLDisplay value={stats.realized} size="small" />
-                          : <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="small" />}
-                        </div>
-                      )}
-
-                      {collapsed && (
-                        <Button
-                          variant="ghost"
-                          className="campaign-list-card-view-btn"
-                          onClick={() => router.push(`/campaigns/${campaign._id}`)}
-                          size="lg">
-                          <RightOutlined />
-                          View
-                        </Button>
-                      )}
-                    </div>
-
-                    {!collapsed && (
-                      <>
-                        <div className="campaign-list-card-body">
-                          <div className="flex min-w-0 flex-wrap gap-2">
-                            <span className="inline-flex max-w-full min-h-[26px] items-center rounded-full border border-[rgba(0,212,170,0.26)] bg-[rgba(0,212,170,0.1)] px-2.5 py-1 text-xs font-semibold leading-tight text-[#8ff3dc] break-words">
-                              {activeStockCount > 0 ?
-                                `${activeStockCount} active / ${campaign.stocks.length} stocks`
-                              : `${campaign.stocks.length} stocks`}
-                            </span>
-                            <span className="inline-flex max-w-full min-h-[26px] items-center rounded-full border border-slate-400/16 bg-[rgba(15,22,41,0.82)] px-2.5 py-1 text-xs font-semibold leading-tight text-[var(--text-secondary)] break-words">
-                              {campaign.moneyLocations.length} locations
-                            </span>
-                            {campaign.startDate && (
-                              <span className="inline-flex max-w-full min-h-[26px] items-center rounded-full border border-violet-500/24 bg-violet-500/10 px-2.5 py-1 text-xs font-semibold leading-tight text-violet-300 break-words">
-                                Started {new Date(campaign.startDate).toLocaleDateString()}
-                              </span>
-                            )}
-                            {fullySoldOut && <Tag color="default">Fully Sold</Tag>}
-                          </div>
-
-                          <div className="grid grid-cols-[repeat(auto-fit,minmax(104px,1fr))] items-start gap-3 max-[420px]:grid-cols-1">
-                            <div className="min-w-0 [&_.ant-statistic-content]:max-w-full [&_.ant-statistic-content]:break-words">
-                              <Statistic
-                                title={
-                                  <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">Invested</span>
-                                }
-                                value={stats.invested}
-                                prefix="$"
-                                precision={0}
-                                valueStyle={{ fontSize: 16, color: "#e2e8f0", lineHeight: 1.15 }}
-                              />
-                            </div>
-                            <div className="min-w-0 [&_.ant-statistic-content]:max-w-full [&_.ant-statistic-content]:break-words">
-                              <div className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">In Stocks</div>
-                              {quotesPending ?
-                                <Skeleton.Input active size="small" style={{ width: 90 }} />
-                              : <Statistic
-                                  value={stats.currentValue}
-                                  prefix="$"
-                                  precision={0}
-                                  valueStyle={{ fontSize: 16, color: "#e2e8f0", lineHeight: 1.15 }}
-                                />
-                              }
-                            </div>
-                            <div className="min-w-0 [&_span]:max-w-full [&_span]:flex-wrap [&_span]:break-words">
-                              <div className="min-w-0">
-                                <div className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">P&L</div>
-                                {quotesPending ?
-                                  <Skeleton.Input active size="small" style={{ width: 90 }} />
-                                : <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="small" />}
-                              </div>
-                            </div>
-                            <div className="min-w-0 [&_span]:max-w-full [&_span]:flex-wrap [&_span]:break-words">
-                              <div className="min-w-0">
-                                <div className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">Day Change</div>
-                                {quotesPending ?
-                                  <Skeleton.Input active size="small" style={{ width: 90 }} />
-                                : <PnLDisplay value={dayChange.value} percentage={dayChange.percentage} size="small" />}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="campaign-list-card-actions">
-                          <div className="min-w-0 border-r border-[var(--border)] max-[420px]:border-r-0 max-[420px]:border-b">
-                            <Button
-                              variant="ghost"
-                              className="w-full max-w-full !rounded-none font-medium text-[var(--text-primary)] transition-all duration-200 hover:bg-white/6 hover:shadow-[0_2px_10px_rgba(0,0,0,0.28)]"
-                              onClick={() => setEditingCampaign(campaign)}
-                              size="lg">
-                              <EditOutlined />
-                              Edit
-                            </Button>
-                          </div>
-                          <div className="min-w-0 border-r border-[var(--border)] max-[420px]:border-r-0 max-[420px]:border-b">
-                            <Popconfirm
-                              title="Delete this campaign?"
-                              description="All stocks and transactions will be removed."
-                              onConfirm={() => handleDelete(campaign._id!)}
-                              okText="Delete"
-                              okType="danger">
-                              <Button
-                                variant="ghost"
-                                className="w-full max-w-full !rounded-none font-medium transition-all duration-200 hover:bg-red-300/15 hover:text-red-500 "
-                                size="lg">
-                                <DeleteOutlined />
-                                Delete
-                              </Button>
-                            </Popconfirm>
-                          </div>
-                          <div className="min-w-0">
-                            <Button
-                              variant="ghost"
-                              className="w-full max-w-full !rounded-none font-medium text-[var(--text-primary)] transition-all duration-200 hover:bg-white/6 hover:shadow-[0_2px_10px_rgba(0,0,0,0.28)]"
-                              onClick={() => router.push(`/campaigns/${campaign._id}`)}
-                              size="lg">
-                              <RightOutlined />
-                              View
-                            </Button>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </Col>
-              );
-            })}
-          </Row>
+          {closedCampaigns.length > 0 && (
+            <section className="campaigns-section" aria-labelledby="closed-campaigns-title">
+              <h2 id="closed-campaigns-title" className="campaigns-section-title">
+                Closed <span className="campaigns-section-count">{closedCampaigns.length}</span>
+              </h2>
+              <div className="campaigns-grid">{closedCampaigns.map(renderCampaign)}</div>
+            </section>
+          )}
         </>
       }
 

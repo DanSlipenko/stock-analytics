@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
 
+const CURATED_CRYPTO = [
+  { description: "Bitcoin USD", displaySymbol: "BTC-USD", symbol: "BINANCE:BTCUSDT", type: "Cryptocurrency" },
+  { description: "Ethereum USD", displaySymbol: "ETH-USD", symbol: "BINANCE:ETHUSDT", type: "Cryptocurrency" },
+  { description: "Solana USD", displaySymbol: "SOL-USD", symbol: "BINANCE:SOLUSDT", type: "Cryptocurrency" },
+  { description: "Cardano USD", displaySymbol: "ADA-USD", symbol: "BINANCE:ADAUSDT", type: "Cryptocurrency" },
+  { description: "Dogecoin USD", displaySymbol: "DOGE-USD", symbol: "BINANCE:DOGEUSDT", type: "Cryptocurrency" },
+  { description: "Zcash USD", displaySymbol: "ZEC-USD", symbol: "BINANCE:ZECUSDT", type: "Cryptocurrency" },
+];
+
 const MOCK_STOCKS = [
   { description: "Apple Inc", displaySymbol: "AAPL", symbol: "AAPL", type: "Common Stock" },
   { description: "Microsoft Corporation", displaySymbol: "MSFT", symbol: "MSFT", type: "Common Stock" },
@@ -18,13 +27,21 @@ const MOCK_STOCKS = [
   { description: "Spotify Technology SA", displaySymbol: "SPOT", symbol: "SPOT", type: "Common Stock" },
   { description: "Uber Technologies Inc", displaySymbol: "UBER", symbol: "UBER", type: "Common Stock" },
   { description: "Palantir Technologies Inc", displaySymbol: "PLTR", symbol: "PLTR", type: "Common Stock" },
-  { description: "Bitcoin USD", displaySymbol: "BTC-USD", symbol: "BINANCE:BTCUSDT", type: "Cryptocurrency" },
-  { description: "Ethereum USD", displaySymbol: "ETH-USD", symbol: "BINANCE:ETHUSDT", type: "Cryptocurrency" },
-  { description: "Solana USD", displaySymbol: "SOL-USD", symbol: "BINANCE:SOLUSDT", type: "Cryptocurrency" },
-  { description: "Cardano USD", displaySymbol: "ADA-USD", symbol: "BINANCE:ADAUSDT", type: "Cryptocurrency" },
-  { description: "Dogecoin USD", displaySymbol: "DOGE-USD", symbol: "BINANCE:DOGEUSDT", type: "Cryptocurrency" },
+  ...CURATED_CRYPTO,
   { description: "Fidelity ZERO Total Market Index Fund", displaySymbol: "FZROX", symbol: "FZROX", type: "Mutual Fund" },
 ];
+
+function matchesCuratedCrypto(entry: (typeof CURATED_CRYPTO)[number], query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return false;
+  const bareSymbol = entry.displaySymbol.replace(/-USD$/i, "").toLowerCase();
+  return (
+    bareSymbol === needle ||
+    entry.description.toLowerCase().includes(needle) ||
+    entry.displaySymbol.toLowerCase().includes(needle) ||
+    entry.symbol.toLowerCase().includes(needle)
+  );
+}
 
 const NORMALIZED_ALLOWED_TYPES = new Set([
   "common stock",
@@ -39,6 +56,19 @@ const NORMALIZED_ALLOWED_TYPES = new Set([
 
 function isLikelyTicker(query: string) {
   return /^[A-Z0-9][A-Z0-9.:-]{0,14}$/i.test(query.trim());
+}
+
+type AssetType = "stock" | "crypto" | "any";
+
+function isCryptoResult(type?: string) {
+  return (type || "").toLowerCase() === "cryptocurrency";
+}
+
+function manualResultAllowed(query: string, assetType: AssetType) {
+  const isBinance = query.trim().toUpperCase().startsWith("BINANCE:");
+  if (assetType === "crypto") return isBinance;
+  if (assetType === "stock") return !isBinance;
+  return true;
 }
 
 function createManualResult(query: string) {
@@ -78,17 +108,23 @@ async function canUseManualResult(query: string) {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const q = searchParams.get("q");
+  const typeParam = (searchParams.get("type") || "").toLowerCase();
+  const assetType: AssetType = typeParam === "crypto" ? "crypto" : typeParam === "stock" ? "stock" : "any";
 
   if (!q) {
     return NextResponse.json({ results: [] });
   }
 
   if (!FINNHUB_KEY || FINNHUB_KEY === "your_finnhub_key_here") {
-    const filtered = MOCK_STOCKS.filter(
+    const pool =
+      assetType === "crypto" ? MOCK_STOCKS.filter((s) => isCryptoResult(s.type))
+      : assetType === "stock" ? MOCK_STOCKS.filter((s) => !isCryptoResult(s.type))
+      : MOCK_STOCKS;
+    const filtered = pool.filter(
       (s) => s.symbol.toLowerCase().includes(q.toLowerCase()) || s.description.toLowerCase().includes(q.toLowerCase()),
     ).slice(0, 10);
     const hasExactMatch = filtered.some((s) => s.symbol.toLowerCase() === q.toLowerCase());
-    const shouldAddManualResult = !hasExactMatch && await canUseManualResult(q);
+    const shouldAddManualResult = manualResultAllowed(q, assetType) && !hasExactMatch && await canUseManualResult(q);
     const results = shouldAddManualResult ? [createManualResult(q), ...filtered].slice(0, 10) : filtered;
     return NextResponse.json({ results });
   }
@@ -116,10 +152,32 @@ export async function GET(request: NextRequest) {
         type: r.type,
       }));
 
+    if (assetType === "crypto") {
+      results = results.filter((r: { type?: string }) => isCryptoResult(r.type));
+    } else if (assetType === "stock") {
+      results = results.filter((r: { type?: string }) => !isCryptoResult(r.type));
+    }
+
+    const curatedCryptoMatches =
+      assetType === "stock"
+        ? []
+        : CURATED_CRYPTO.filter(
+            (c) =>
+              matchesCuratedCrypto(c, q) &&
+              !results.some(
+                (r: { symbol: string; displaySymbol: string }) =>
+                  r.symbol.toLowerCase() === c.symbol.toLowerCase() ||
+                  r.displaySymbol.toLowerCase() === c.displaySymbol.toLowerCase(),
+              ),
+          );
+    results = [...curatedCryptoMatches, ...results];
+
     const hasExactMatch = results.some((r: { symbol: string; displaySymbol: string }) =>
-      r.symbol.toLowerCase() === q.toLowerCase() || r.displaySymbol.toLowerCase() === q.toLowerCase()
+      r.symbol.toLowerCase() === q.toLowerCase() ||
+      r.displaySymbol.toLowerCase() === q.toLowerCase() ||
+      r.displaySymbol.replace(/-USD$/i, "").toLowerCase() === q.toLowerCase()
     );
-    if (!hasExactMatch && await canUseManualResult(q)) {
+    if (manualResultAllowed(q, assetType) && !hasExactMatch && await canUseManualResult(q)) {
       results.unshift(createManualResult(q));
     }
 

@@ -41,6 +41,8 @@ const MoneyLocationSchema = new Schema({
 export interface ICampaign extends Document {
   name: string;
   startDate: Date;
+  /** Manually finished by the user; sorts and styles with the inactive campaigns. */
+  closed: boolean;
   moneyLocations: Array<{
     _id: mongoose.Types.ObjectId;
     name: string;
@@ -80,6 +82,7 @@ const CampaignSchema = new Schema<ICampaign>(
   {
     name:           { type: String, required: true },
     startDate:      { type: Date, required: true, default: Date.now },
+    closed:         { type: Boolean, default: false },
     moneyLocations: [MoneyLocationSchema],
     stocks:         [CampaignStockSchema],
   },

@@ -1,0 +1,249 @@
+'use client';
+
+import React, { useMemo, useState } from 'react';
+import { Card, Statistic, Tag, Spin, Empty, Button } from 'antd';
+import Link from 'next/link';
+import {
+  DollarOutlined,
+  RiseOutlined,
+  FallOutlined,
+  FundOutlined,
+  TrophyOutlined,
+  FolderOutlined,
+} from '@ant-design/icons';
+import { useStore } from '@/context/StoreContext';
+import { useStockQuotes } from '@/hooks/useStockQuote';
+import PnLDisplay from '@/components/shared/PnLDisplay';
+import StockDetailDrawer from '@/components/charts/StockDetailDrawer';
+import { useRouter } from 'next/navigation';
+import { calculateCampaignStats } from '@/lib/campaignStats';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+
+interface CampaignTableRow {
+  key: string;
+  name: string;
+  stocks: number;
+  invested: number;
+  currentValue: number;
+  realizedGain: number;
+  pnl: number;
+  pnlPercent: number;
+}
+
+export default function DashboardPage() {
+  const { state } = useStore();
+  const router = useRouter();
+  const [drawerSymbol, setDrawerSymbol] = useState<string | null>(null);
+
+  // Collect all unique symbols across campaigns
+  const allSymbols = useMemo(() => {
+    const symbols = new Set<string>();
+    state.campaigns.forEach((c) => c.stocks.forEach((s) => symbols.add(s.symbol)));
+    return Array.from(symbols);
+  }, [state.campaigns]);
+
+  const { quotes, loading: quotesLoading } = useStockQuotes(allSymbols);
+
+  // Calculate portfolio-wide stats
+  const stats = useMemo(() => {
+    const campaignStats = state.campaigns.map((campaign) => calculateCampaignStats(campaign, quotes));
+    const totalInvested = campaignStats.reduce((sum, stat) => sum + stat.invested, 0);
+    const totalCurrentValue = campaignStats.reduce((sum, stat) => sum + stat.currentValue, 0);
+    const totalRealizedGain = campaignStats.reduce((sum, stat) => sum + stat.realized, 0);
+    const totalPnL = campaignStats.reduce((sum, stat) => sum + stat.pnl, 0);
+    // Cost of every share bought, so a sale doesn't shrink the denominator.
+    const totalCostBasis = campaignStats.reduce((sum, stat) => sum + stat.costBasis, 0);
+    const totalPnLPercent = totalCostBasis > 0 ? (totalPnL / totalCostBasis) * 100 : 0;
+
+    return {
+      totalInvested,
+      totalCurrentValue,
+      totalRealizedGain,
+      unrealizedGain: totalCurrentValue - totalInvested,
+      totalPnL,
+      totalPnLPercent,
+    };
+  }, [state.campaigns, quotes]);
+
+  // Campaign table data
+  const campaignData = useMemo<CampaignTableRow[]>(() => {
+    return state.campaigns.map((campaign) => {
+      const campaignStats = calculateCampaignStats(campaign, quotes);
+
+      return {
+        key: campaign._id ?? campaign.name,
+        name: campaign.name,
+        stocks: campaign.stocks.length,
+        invested: campaignStats.invested,
+        currentValue: campaignStats.currentValue,
+        realizedGain: campaignStats.realized,
+        pnl: campaignStats.pnl,
+        pnlPercent: campaignStats.pnlPercent,
+      };
+    });
+  }, [state.campaigns, quotes]);
+
+  if (state.loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="page-container">
+      <div className="page-header">
+        <h1>Dashboard</h1>
+        <div style={{ fontSize: 13, color: '#64748b' }}>
+          {quotesLoading ? 'Updating prices...' : 'Prices up to date'}
+        </div>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="stats-grid animate-in">
+        <Card className="stat-card" bordered={false}>
+          <Statistic
+            title={<span style={{ color: '#64748b' }}>Total Invested</span>}
+            value={stats.totalInvested}
+            prefix={<DollarOutlined style={{ color: '#3b82f6' }} />}
+            precision={2}
+            valueStyle={{ color: '#e2e8f0' }}
+            formatter={(value) => `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          />
+        </Card>
+        <Card className="stat-card" bordered={false}>
+          <Statistic
+            title={<span style={{ color: '#64748b' }}>Current Value</span>}
+            value={stats.totalCurrentValue}
+            prefix={<FundOutlined style={{ color: '#f5f5f5' }} />}
+            precision={2}
+            valueStyle={{ color: '#e2e8f0' }}
+            formatter={(value) => `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          />
+        </Card>
+        <Card className="stat-card" bordered={false}>
+          <Statistic
+            title={<span style={{ color: '#64748b' }}>Total P&L</span>}
+            value={stats.totalPnL}
+            prefix={stats.totalPnL >= 0 ? <RiseOutlined style={{ color: '#22c55e' }} /> : <FallOutlined style={{ color: '#ef4444' }} />}
+            precision={2}
+            valueStyle={{ color: stats.totalPnL >= 0 ? '#22c55e' : '#ef4444' }}
+            formatter={(value) => `${Number(value) >= 0 ? '+' : ''}$${Math.abs(Number(value)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            suffix={<span style={{ fontSize: 14 }}>({stats.totalPnLPercent >= 0 ? '+' : ''}{stats.totalPnLPercent.toFixed(1)}%)</span>}
+          />
+        </Card>
+        <Card className="stat-card" bordered={false}>
+          <Statistic
+            title={<span style={{ color: '#64748b' }}>Realized Gains</span>}
+            value={stats.totalRealizedGain}
+            prefix={<TrophyOutlined style={{ color: '#f59e0b' }} />}
+            precision={2}
+            valueStyle={{ color: stats.totalRealizedGain >= 0 ? '#22c55e' : '#ef4444' }}
+            formatter={(value) => `${Number(value) >= 0 ? '+' : ''}$${Math.abs(Number(value)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          />
+        </Card>
+      </div>
+
+      {/* Active Alerts Summary */}
+      {state.alerts.filter((a) => !a.triggered).length > 0 && (
+        <Card
+          title={<span style={{ color: '#e2e8f0' }}>🔔 Active Alerts</span>}
+          bordered={false}
+          style={{ marginBottom: 24 }}
+          extra={
+            <Button type="link" onClick={() => router.push('/alerts')}>
+              View All
+            </Button>
+          }
+        >
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {state.alerts
+              .filter((a) => !a.triggered)
+              .slice(0, 6)
+              .map((alert) => (
+                <Tag
+                  key={alert._id}
+                  color={alert.type === 'above' ? 'green' : 'red'}
+                  style={{ padding: '4px 12px', fontSize: 13 }}
+                >
+                  {alert.symbol} {alert.type === 'above' ? '↑' : '↓'}{' '}
+                  {alert.targetPrice != null ? `$${alert.targetPrice}` : `${alert.targetPercent}%`}
+                </Tag>
+              ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Campaign Table */}
+      <Card
+        className="data-table-card"
+        title={
+          <span style={{ color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <FolderOutlined /> Campaigns Overview
+          </span>
+        }
+        bordered={false}
+        extra={
+          <Button type="primary" onClick={() => router.push('/campaigns')}>
+            Manage Campaigns
+          </Button>
+        }
+      >
+        {campaignData.length === 0 ? (
+          <Empty
+            description={<span style={{ color: '#64748b' }}>No campaigns yet. Create your first campaign!</span>}
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
+        ) : (
+          <Table aria-label="Campaigns overview" className="min-w-[760px] tabular-nums">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">Campaign</TableHead>
+                <TableHead scope="col" className="text-right">Stocks</TableHead>
+                <TableHead scope="col" className="text-right">Invested</TableHead>
+                <TableHead scope="col" className="text-right">Current Value</TableHead>
+                <TableHead scope="col" className="text-right">P&amp;L</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {campaignData.map(record => (
+                <TableRow
+                  key={record.key}
+                  className="cursor-pointer"
+                  onClick={() => router.push(`/campaigns/${record.key}`)}
+                >
+                  <TableCell className="min-w-44 max-w-72 whitespace-normal break-words font-semibold">
+                    <Link
+                      href={`/campaigns/${record.key}`}
+                      className="text-foreground hover:underline focus-visible:underline"
+                      onClick={event => event.stopPropagation()}
+                    >
+                      {record.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-right"><Tag color="blue" style={{ marginInlineEnd: 0 }}>{record.stocks}</Tag></TableCell>
+                  <TableCell className="text-right">
+                    ${record.invested.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    ${record.currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <PnLDisplay value={record.pnl} percentage={record.pnlPercent} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </Card>
+
+      <StockDetailDrawer
+        symbol={drawerSymbol}
+        open={!!drawerSymbol}
+        onClose={() => setDrawerSymbol(null)}
+      />
+    </div>
+  );
+}

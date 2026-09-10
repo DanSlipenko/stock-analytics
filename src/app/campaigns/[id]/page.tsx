@@ -2,13 +2,9 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  Card,
   Button,
   Table,
   Tag,
-  Statistic,
-  Row,
-  Col,
   Skeleton,
   Empty,
   Space,
@@ -28,10 +24,8 @@ import {
 import {
   PlusOutlined,
   ArrowLeftOutlined,
-  BankOutlined,
+  LeftOutlined,
   DeleteOutlined,
-  DollarOutlined,
-  TrophyOutlined,
   LineChartOutlined,
   UnorderedListOutlined,
   AppstoreOutlined,
@@ -49,10 +43,16 @@ import SellStockModal from "@/components/campaigns/SellStockModal";
 import EditStockModal from "@/components/campaigns/EditStockModal";
 import EditTransactionModal from "@/components/campaigns/EditTransactionModal";
 import StockActionsDropdown from "@/components/campaigns/StockActionsDropdown";
-import StockChart, { ChartAlertRule, TimeRange, TIME_RANGES } from "@/components/charts/StockChart";
+import StockChart, { ChartAlertRule, TimeRange } from "@/components/charts/StockChart";
+import TimeRangeFilter from "@/components/charts/TimeRangeFilter";
 import StockDetailDrawer from "@/components/charts/StockDetailDrawer";
+import CampaignSummary, { SummaryMetric } from "@/components/campaigns/CampaignSummary";
+import CampaignPerformance from "@/components/campaigns/CampaignPerformance";
+import MetaLine from "@/components/shared/MetaLine";
 import PnLDisplay from "@/components/shared/PnLDisplay";
 import { calculateCampaignStats, calculateCampaignAnnualPnL } from "@/lib/campaignStats";
+import { getCampaignMetaParts, pluralize } from "@/lib/campaignFormat";
+import { getSoldShares, getRemainingShares, isSoldOut } from "@/lib/shares";
 import { cn } from "@/lib/utils";
 
 type LocationStats = {
@@ -87,12 +87,6 @@ const formatNotification = (notification: StockNotification) => {
 
   return `${direction} ${target}`;
 };
-
-const getSoldShares = (stock: CampaignStock) => stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
-
-const getRemainingShares = (stock: CampaignStock) => Math.max(stock.shares - getSoldShares(stock), 0);
-
-const isSoldOut = (stock: CampaignStock) => getRemainingShares(stock) <= 0;
 
 const getRealizedPnL = (stock: CampaignStock) =>
   stock.transactions.reduce((sum, transaction) => sum + transaction.shares * (transaction.price - stock.buyPrice), 0);
@@ -151,16 +145,6 @@ const getDisplayLastDayMovement = (stock: CampaignStock, quote?: StockQuote): La
 
 const QuoteCellSkeleton = ({ width = 72 }: { width?: number }) => <Skeleton.Input active size="small" style={{ width, minWidth: width }} />;
 
-const METRIC_BOX_CLASS = "min-w-0 rounded-lg border border-border bg-card/50 p-2.5";
-const METRIC_LABEL_CLASS = "mb-1.5 block text-xs font-semibold leading-tight text-muted-foreground";
-const METRIC_VALUE_CLASS = "block text-sm font-semibold";
-
-const getPnLToneClass = (value: number) => {
-  if (value > 0) return "border-green-500/30 bg-green-500/10";
-  if (value < 0) return "border-destructive/30 bg-destructive/10";
-  return "";
-};
-
 const STOCK_TABLE_CELL_WIDTHS = [88, 56, 72, 72, 72, 80, 96, 88, 72, 100, 32];
 
 function StockTableSkeleton({ rowCount = 5 }: { rowCount?: number }) {
@@ -205,55 +189,70 @@ function MobileStockCardSkeleton({ count = 3 }: { count?: number }) {
   );
 }
 
+const SKELETON_METRICS: SummaryMetric[] = ["Today", "This Year", "Total P&L", "Realized"].map((label) => ({
+  label,
+  value: 0,
+  percentage: 0,
+  pending: true,
+}));
+
 function CampaignDetailSkeleton() {
   return (
-    <div className="page-container">
+    <div className="page-container campaigns-page">
       <div className="page-header">
         <div className="campaign-page-heading">
-          <Skeleton.Button active size="small" style={{ width: 32 }} />
-          <Skeleton.Input active size="large" style={{ width: 220 }} />
+          <Skeleton.Input active size="small" style={{ width: 104, minWidth: 104 }} />
+          <Skeleton.Input active size="large" style={{ width: 260 }} />
+          <Skeleton.Input active size="small" style={{ width: 240 }} />
         </div>
-        <Skeleton.Button active size="default" style={{ width: 112 }} />
+        <Skeleton.Button active size="large" shape="round" style={{ width: 128 }} />
       </div>
 
-      <div className="stats-grid">
-        {Array.from({ length: 5 }).map((_, index) => (
-          <Card key={index} className="stat-card" bordered={false}>
-            <Skeleton.Input active size="small" style={{ width: 96, marginBottom: 10 }} />
-            <Skeleton.Input active size="large" style={{ width: 160 }} />
-          </Card>
-        ))}
-      </div>
+      <div className="campaigns-container">
+        <CampaignSummary label="Total in Stocks" value={0} pending metrics={SKELETON_METRICS} />
 
-      <Card className="campaign-detail-card money-locations-card" bordered={false} style={{ marginBottom: 24 }}>
-        <Skeleton.Input active size="small" style={{ width: 140, marginBottom: 16 }} />
-        <Row gutter={16}>
-          {Array.from({ length: 3 }).map((_, index) => (
-            <Col key={index} xs={24} md={12} lg={8}>
-              <Card size="small" style={{ background: "#0f1629", border: "1px solid #1e2a3a" }}>
-                <Skeleton.Input active size="small" style={{ width: "70%", marginBottom: 8 }} />
-                <Skeleton.Input active size="small" style={{ width: "45%" }} />
-              </Card>
-            </Col>
-          ))}
-        </Row>
-      </Card>
+        <section className="campaigns-section">
+          <div className="campaigns-section-header">
+            <h2 className="campaigns-section-title">Money Locations</h2>
+          </div>
+          <div className="money-location-grid">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div key={index} className="money-location-tile">
+                <Skeleton.Input active size="small" style={{ width: 140 }} />
+                <Skeleton.Input active size="small" style={{ width: 36, minWidth: 36 }} />
+              </div>
+            ))}
+          </div>
+        </section>
 
-      <Card className="campaign-detail-card campaign-stocks-card" bordered={false}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <Skeleton.Input active size="small" style={{ width: 72 }} />
-          <div style={{ display: "flex", gap: 8 }}>
-            <Skeleton.Button active size="small" style={{ width: 96 }} />
+        <section className="campaigns-section">
+          <div className="campaigns-section-header">
+            <h2 className="campaigns-section-title">Performance</h2>
+            <Skeleton.Button active size="small" style={{ width: 104 }} />
+          </div>
+          <div className="performance-panel">
+            <div className="performance-skeleton">
+              <Skeleton.Input active size="small" style={{ width: 104, minWidth: 104 }} />
+              <Skeleton.Input active size="large" style={{ width: 180 }} />
+              <Skeleton.Input active size="small" style={{ width: 150 }} />
+            </div>
+            <Skeleton.Node active style={{ width: "100%", height: 240, borderRadius: 0 }} />
+          </div>
+        </section>
+
+        <section className="campaigns-section">
+          <div className="campaigns-section-header">
+            <h2 className="campaigns-section-title">Stocks</h2>
             <Skeleton.Button active size="small" style={{ width: 96 }} />
           </div>
-        </div>
-        <div className="desktop-stock-table">
-          <StockTableSkeleton />
-        </div>
-        <div className="mobile-stock-cards">
-          <MobileStockCardSkeleton />
-        </div>
-      </Card>
+          <div className="desktop-stock-table">
+            <StockTableSkeleton />
+          </div>
+          <div className="mobile-stock-cards">
+            <MobileStockCardSkeleton />
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -509,10 +508,7 @@ export default function CampaignDetailPage() {
     campaign.stocks.forEach((stock) => {
       if (!stock.locationId || !stats[stock.locationId]) return;
 
-      const soldShares = stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
-      const remainingShares = stock.shares - soldShares;
-
-      if (remainingShares > 0) {
+      if (!isSoldOut(stock)) {
         stats[stock.locationId].stockCount += 1;
       }
     });
@@ -558,6 +554,7 @@ export default function CampaignDetailPage() {
               className="stock-star-btn"
               style={{ color: starred ? "#f59e0b" : "#64748b" }}
               title={starred ? "Unstar position" : "Star position"}
+              aria-label={starred ? "Unstar position" : "Star position"}
               onClick={(e) => {
                 e.stopPropagation();
                 if (record._id) toggleStockStarred(record._id);
@@ -565,22 +562,14 @@ export default function CampaignDetailPage() {
             />
             <Button
               type="link"
-              style={{
-                fontWeight: 700,
-                fontSize: 15,
-                padding: 0,
-                color:
-                  soldOut ? "#fca5a5"
-                  : starred ? "#fbbf24"
-                  : undefined,
-              }}
+              className={cn("stock-symbol-link", soldOut && "stock-symbol-link-sold")}
               onClick={(e) => {
                 e.stopPropagation();
                 setDrawerSymbol(symbol);
               }}>
               {symbol} <LineChartOutlined style={{ fontSize: 11 }} />
             </Button>
-            {soldOut && <Tag color="red">Sold</Tag>}
+            {soldOut && <span className="campaign-status">Sold</span>}
           </Space>
         );
       },
@@ -594,7 +583,7 @@ export default function CampaignDetailPage() {
         return (
           <span>
             {remaining.toLocaleString()}
-            {sold > 0 && <span style={{ color: "#64748b", fontSize: 12 }}> / {record.shares}</span>}
+            {sold > 0 && <span style={{ color: "var(--text-secondary)", fontSize: 12 }}> / {record.shares}</span>}
           </span>
         );
       },
@@ -611,7 +600,7 @@ export default function CampaignDetailPage() {
       key: "soldPrice",
       render: (_: unknown, record: CampaignStock) => {
         const soldPrice = getAverageSoldPrice(record);
-        return soldPrice != null ? `$${soldPrice.toFixed(2)}` : <span style={{ color: "#64748b" }}>—</span>;
+        return soldPrice != null ? `$${soldPrice.toFixed(2)}` : <span style={{ color: "var(--text-secondary)" }}>—</span>;
       },
       align: "right" as const,
     },
@@ -633,7 +622,7 @@ export default function CampaignDetailPage() {
         const movement = getDisplayLastDayMovement(record, quotes[record.symbol]);
         return movement ?
             <PnLDisplay value={movement.value} percentage={movement.percentage} size="small" />
-          : <span style={{ color: "#64748b" }}>—</span>;
+          : <span style={{ color: "var(--text-secondary)" }}>—</span>;
       },
       align: "right" as const,
     },
@@ -657,7 +646,7 @@ export default function CampaignDetailPage() {
         const remaining = getRemainingShares(record);
         if (remaining <= 0) {
           const realized = getRealizedPnL(record);
-          if (realized === 0) return <span style={{ color: "#64748b" }}>—</span>;
+          if (realized === 0) return <span style={{ color: "var(--text-secondary)" }}>—</span>;
           return <PnLDisplay value={realized} percentage={getRealizedPnLPercent(record)} size="small" />;
         }
         if (quotesPending) return <QuoteCellSkeleton width={88} />;
@@ -673,9 +662,9 @@ export default function CampaignDetailPage() {
       title: "Realized",
       key: "realized",
       render: (_: unknown, record: CampaignStock) => {
-        if (isSoldOut(record)) return <span style={{ color: "#64748b" }}>—</span>;
+        if (isSoldOut(record)) return <span style={{ color: "var(--text-secondary)" }}>—</span>;
         const realized = getRealizedPnL(record);
-        return realized !== 0 ? <PnLDisplay value={realized} size="small" /> : <span style={{ color: "#64748b" }}>—</span>;
+        return realized !== 0 ? <PnLDisplay value={realized} size="small" /> : <span style={{ color: "var(--text-secondary)" }}>—</span>;
       },
       align: "right" as const,
     },
@@ -684,12 +673,12 @@ export default function CampaignDetailPage() {
       key: "location",
       render: (_: unknown, record: CampaignStock) => {
         const loc = campaign.moneyLocations.find((l) => l._id === record.locationId);
-        if (!loc) return <span style={{ color: "#64748b" }}>—</span>;
+        if (!loc) return <span style={{ color: "var(--text-secondary)" }}>—</span>;
 
         return (
           <div>
             <Tag>{loc.name}</Tag>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>{loc.type}</div>
+            {loc.type !== loc.name && <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>{loc.type}</div>}
           </div>
         );
       },
@@ -720,11 +709,11 @@ export default function CampaignDetailPage() {
   const stockExpandable = {
     expandedRowRender: (record: CampaignStock) => (
       <div style={{ padding: "8px 0" }}>
-        <Divider titlePlacement="start" style={{ color: "#64748b", fontSize: 12, margin: "0 0 12px 0" }}>
+        <Divider titlePlacement="start" style={{ color: "var(--text-secondary)", fontSize: 12, margin: "0 0 12px 0" }}>
           Transaction History
         </Divider>
         {record.transactions.length === 0 ?
-          <span style={{ color: "#64748b", fontSize: 13 }}>No transactions yet</span>
+          <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>No transactions yet</span>
         : <Table
             dataSource={record.transactions.map((t, i) => ({ ...t, key: i }))}
             columns={[
@@ -797,31 +786,24 @@ export default function CampaignDetailPage() {
                   className="stock-star-btn"
                   style={{ color: starred ? "#f59e0b" : "#64748b" }}
                   title={starred ? "Unstar position" : "Star position"}
+                  aria-label={starred ? "Unstar position" : "Star position"}
                   onClick={() => {
                     if (stock._id) toggleStockStarred(stock._id);
                   }}
                 />
                 <Button
                   type="link"
-                  className="mobile-stock-symbol"
-                  style={{
-                    color:
-                      soldOut ? "#fca5a5"
-                      : starred ? "#fbbf24"
-                      : undefined,
-                  }}
+                  className={cn("mobile-stock-symbol stock-symbol-link", soldOut && "stock-symbol-link-sold")}
                   onClick={() => setDrawerSymbol(stock.symbol)}>
                   {stock.symbol} <LineChartOutlined style={{ fontSize: 11 }} />
                 </Button>
               </div>
               <div className="mobile-stock-header-actions">
+                {/* The filled star already marks a starred position, so it gets no extra tag. */}
                 <div className="mobile-stock-tags">
-                  {starred && <Tag color="gold">Starred</Tag>}
-                  {soldOut && <Tag color="red">Sold</Tag>}
+                  {soldOut && <span className="campaign-status">Sold</span>}
                   {notifications.length > 0 && (
-                    <Tag color="gold">
-                      {notifications.length} alert{notifications.length === 1 ? "" : "s"}
-                    </Tag>
+                    <span className="campaign-status campaign-status-alert">{pluralize(notifications.length, "alert")}</span>
                   )}
                 </div>
                 <StockActionsDropdown
@@ -860,7 +842,7 @@ export default function CampaignDetailPage() {
                     <span>Realized P&L</span>
                     {realized !== 0 ?
                       <PnLDisplay value={realized} percentage={realizedPct} size="small" />
-                    : <strong className="neutral">-</strong>}
+                    : <strong className="neutral">—</strong>}
                   </div>
                 </>
               : <>
@@ -887,7 +869,7 @@ export default function CampaignDetailPage() {
                       <QuoteCellSkeleton width={88} />
                     : lastDayMovement ?
                       <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="small" />
-                    : <strong className="neutral">-</strong>}
+                    : <strong className="neutral">—</strong>}
                   </div>
                   <div>
                     <span>In Stocks</span>
@@ -905,7 +887,7 @@ export default function CampaignDetailPage() {
                     <span>Realized</span>
                     {realized !== 0 ?
                       <PnLDisplay value={realized} size="small" />
-                    : <strong className="neutral">-</strong>}
+                    : <strong className="neutral">—</strong>}
                   </div>
                 </>
               }
@@ -914,7 +896,7 @@ export default function CampaignDetailPage() {
             {loc && (
               <div className="mobile-stock-funding">
                 <Tag>{loc.name}</Tag>
-                <span>{loc.type}</span>
+                {loc.type !== loc.name && <span>{loc.type}</span>}
               </div>
             )}
 
@@ -945,270 +927,376 @@ export default function CampaignDetailPage() {
     </div>
   );
 
-  const showChartTimeRange = campaign.stocks.length > 0 && viewMode !== "list";
+  // The range scopes the performance chart too, so it stays up in list view.
+  const showChartTimeRange = campaign.stocks.length > 0;
+
+  const realizedBasis = campaign.stocks.reduce((sum, stock) => sum + getSoldShares(stock) * stock.buyPrice, 0);
+
+  // Ordered by time horizon, shortest first; realized gains close the row.
+  const summaryMetrics: SummaryMetric[] = [
+    { label: "Today", value: lastDayMovement.value, percentage: lastDayMovement.percentage, pending: quotesPending },
+    {
+      label: "This Year",
+      value: annualPnlStats.pnl,
+      percentage: annualPnlStats.pnlPercent,
+      pending: quotesPending || periodPricesPending,
+    },
+    { label: "Total P&L", value: stats.pnl, percentage: stats.pnlPercent, pending: quotesPending },
+    { label: "Realized", value: stats.realized, percentage: realizedBasis > 0 ? (stats.realized / realizedBasis) * 100 : 0 },
+  ];
+
+  const renderChartCard = (stock: CampaignStock) => {
+    const markers: import("lightweight-charts").SeriesMarker<import("lightweight-charts").Time>[] = [];
+    const notifications = stock.notifications || [];
+    const soldOut = isSoldOut(stock);
+    const starred = Boolean(stock.isStarred);
+    const alertRules: ChartAlertRule[] = notifications.map((notification) => ({
+      id: notification._id,
+      type: notification.type,
+      targetPrice: notification.targetPrice,
+      targetPercent: notification.targetPercent,
+      referencePrice: notification.referencePrice,
+      createdAt: notification.createdAt,
+    }));
+    const quote = quotes[stock.symbol];
+    const currentPrice = quote?.currentPrice;
+    const remaining = getRemainingShares(stock);
+    const lastDayMovement = getDisplayLastDayMovement(stock, quote);
+    const priceForPnl = currentPrice ?? stock.buyPrice;
+    const unrealized = remaining * (priceForPnl - stock.buyPrice);
+    const unrealizedPct = ((priceForPnl - stock.buyPrice) / stock.buyPrice) * 100;
+    const realized = getRealizedPnL(stock);
+    const realizedPct = getRealizedPnLPercent(stock);
+    const soldPrice = getAverageSoldPrice(stock);
+    const triggeredCount =
+      currentPrice == null ? 0 : (
+        notifications.filter((notification) => {
+          const targetPrice = getNotificationTargetPrice(notification);
+          if (targetPrice == null) return false;
+          return notification.type === "above" ? currentPrice >= targetPrice : currentPrice <= targetPrice;
+        }).length
+      );
+
+    if (stock.buyDate) {
+      const d = new Date(stock.buyDate);
+      const timeStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+      markers.push({
+        time: timeStr as unknown as import("lightweight-charts").Time,
+        position: "belowBar",
+        color: "#22c55e",
+        shape: "arrowUp",
+        text: `Buy @ $${stock.buyPrice}`,
+      });
+    }
+
+    if (stock.transactions && stock.transactions.length > 0) {
+      stock.transactions.forEach((t) => {
+        if (t.type === "sell" && t.date) {
+          const d = new Date(t.date);
+          const timeStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+          markers.push({
+            time: timeStr as unknown as import("lightweight-charts").Time,
+            position: "aboveBar",
+            color: "#ef4444",
+            shape: "arrowDown",
+            text: `Sell @ $${t.price}`,
+          });
+        }
+      });
+    }
+
+    const empty = <span className="neutral">—</span>;
+    const currentPriceValue =
+      quotesPending ? <QuoteCellSkeleton width={88} />
+      : currentPrice != null ?
+        <span
+          className={cn(
+            currentPrice > stock.buyPrice && "gain",
+            currentPrice < stock.buyPrice && "loss",
+            currentPrice === stock.buyPrice && "neutral",
+          )}>
+          {formatCurrency(currentPrice)}
+        </span>
+      : empty;
+
+    return (
+      <div key={stock._id} className={cn("chart-stock-card", soldOut && "chart-stock-card-sold", starred && "chart-stock-card-starred")}>
+        <div className="chart-stock-card-header">
+          <div className="chart-stock-title">
+            <Button
+              type="text"
+              size="small"
+              icon={starred ? <StarFilled /> : <StarOutlined />}
+              style={{ color: starred ? "#f59e0b" : "#64748b" }}
+              title={starred ? "Unstar position" : "Star position"}
+              aria-label={starred ? "Unstar position" : "Star position"}
+              onClick={() => {
+                if (stock._id) toggleStockStarred(stock._id);
+              }}
+            />
+            <span className="chart-stock-symbol">{stock.symbol}</span>
+            {soldOut && <span className="campaign-status">Sold</span>}
+            {notifications.length > 0 && (
+              <span className={cn("campaign-status", triggeredCount > 0 ? "campaign-status-hit" : "campaign-status-alert")}>
+                {triggeredCount > 0 ? `${triggeredCount} hit` : pluralize(notifications.length, "alert")}
+              </span>
+            )}
+          </div>
+          <StockActionsDropdown
+            hasRemaining={!soldOut}
+            showAlerts
+            onAlerts={() => {
+              setNotificationStock(stock);
+              notificationForm.setFieldsValue({ thresholdType: "price", direction: "above" });
+            }}
+            onSell={() => setSellStock(stock)}
+            onBuyMore={() => setBuyMoreStock(stock)}
+            onEdit={() => setEditStock(stock)}
+            onDelete={() => deleteStock(stock._id!)}
+          />
+        </div>
+        <StockChart
+          symbol={stock.symbol}
+          height={220}
+          hideToolbar
+          activeRangeOverride={globalTimeRange}
+          chartType={viewMode === "area" ? "area" : "candlestick"}
+          markers={markers}
+          alertRules={alertRules}
+        />
+        {(soldOut || viewMode === "area") && (
+          <dl className="chart-stock-metrics">
+            <div>
+              <dt>Buy Price</dt>
+              <dd>{formatCurrency(stock.buyPrice)}</dd>
+            </div>
+            {soldOut ?
+              <>
+                <div>
+                  <dt>Sold Price</dt>
+                  <dd>{soldPrice != null ? formatCurrency(soldPrice) : empty}</dd>
+                </div>
+                <div>
+                  <dt>Current Price</dt>
+                  <dd>{currentPriceValue}</dd>
+                </div>
+                <div>
+                  <dt>Realized P&L</dt>
+                  <dd>{realized !== 0 ? <PnLDisplay value={realized} percentage={realizedPct} size="small" /> : empty}</dd>
+                </div>
+              </>
+            : <>
+                <div>
+                  <dt>Current Price</dt>
+                  <dd>{currentPriceValue}</dd>
+                </div>
+                <div>
+                  <dt>Last Day</dt>
+                  <dd>
+                    {quotesPending ?
+                      <QuoteCellSkeleton width={88} />
+                    : lastDayMovement ?
+                      <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="small" />
+                    : empty}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Unrealized P&L</dt>
+                  <dd>
+                    {quotesPending ?
+                      <QuoteCellSkeleton width={88} />
+                    : <PnLDisplay value={unrealized} percentage={unrealizedPct} size="small" />}
+                  </dd>
+                </div>
+              </>
+            }
+          </dl>
+        )}
+      </div>
+    );
+  };
+
+  const renderSoldSection = (content: React.ReactNode) => (
+    <section className="campaigns-subsection" aria-labelledby="sold-positions-title">
+      <h3 id="sold-positions-title" className="campaigns-section-title">
+        Sold Positions <span className="campaigns-section-count">{soldStocks.length}</span>
+      </h3>
+      <p className="campaigns-section-footnote">Fully sold, kept for realized P&L and transaction history.</p>
+      {content}
+    </section>
+  );
 
   return (
-    <div className="page-container">
-      {/* Header */}
+    <div className="page-container campaigns-page">
       <div className="page-header">
         <div className="campaign-page-heading">
-          <Button icon={<ArrowLeftOutlined />} onClick={() => router.push("/campaigns")} type="text" />
+          <button type="button" className="campaigns-back-button" onClick={() => router.push("/campaigns")}>
+            <LeftOutlined aria-hidden />
+            Campaigns
+          </button>
           <h1>{campaign.name}</h1>
+          <MetaLine parts={getCampaignMetaParts(campaign, activeStocks.length)} className="campaign-page-subtitle" />
         </div>
-        <Button type="primary" icon={<PlusOutlined />} className="page-primary-action" onClick={() => setAddStockModal(true)}>
+        <Button
+          type="primary"
+          shape="round"
+          size="large"
+          icon={<PlusOutlined />}
+          className="campaigns-primary-action"
+          onClick={() => setAddStockModal(true)}>
           Add Stock
         </Button>
       </div>
 
       {showChartTimeRange && (
         <div className="stocks-time-range-bar">
-          <div className="time-range-group">
-            {TIME_RANGES.map((r) => (
-              <button
-                key={r.key}
-                className={`time-range-btn ${globalTimeRange === r.key ? "active" : ""}`}
-                onClick={() => setGlobalTimeRange(r.key)}>
-                {r.label}
-              </button>
-            ))}
-          </div>
+          <TimeRangeFilter value={globalTimeRange} onChange={setGlobalTimeRange} />
         </div>
       )}
 
-      {/* Stats Row */}
-      <div className="stats-grid animate-in">
-        <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: "#64748b" }}>Invested</span>}
-            value={stats.invested}
-            prefix={<DollarOutlined style={{ color: "#3b82f6" }} />}
-            precision={2}
-            valueStyle={{ color: "#e2e8f0" }}
-            formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
-          />
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total in Stocks</div>
-          {quotesPending ?
-            <Skeleton.Input active size="large" style={{ width: 160 }} />
-          : <Statistic
-              value={stats.currentValue}
-              precision={2}
-              valueStyle={{ color: "#e2e8f0" }}
-              formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
-            />
-          }
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Last Day</div>
-          {quotesPending ?
-            <Skeleton.Input active size="large" style={{ width: 160 }} />
-          : <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="large" />}
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total P&L</div>
-          {quotesPending ?
-            <Skeleton.Input active size="large" style={{ width: 160 }} />
-          : <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="large" />}
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Annual P&L</div>
-          {quotesPending || periodPricesPending ?
-            <Skeleton.Input active size="large" style={{ width: 160 }} />
-          : <PnLDisplay value={annualPnlStats.pnl} percentage={annualPnlStats.pnlPercent} size="large" />}
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: "#64748b" }}>Realized Gains</span>}
-            prefix={<TrophyOutlined style={{ color: "#f59e0b" }} />}
-            value={stats.realized}
-            precision={2}
-            valueStyle={{ color: stats.realized >= 0 ? "#22c55e" : "#ef4444" }}
-            formatter={(v) => `${Number(v) >= 0 ? "+" : ""}$${Math.abs(Number(v)).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
-          />
-        </Card>
-      </div>
+      {/* The time-range bar stays outside the query container: on phones it is fixed to the viewport. */}
+      <div className="campaigns-container">
+        <CampaignSummary
+          label="Total in Stocks"
+          value={stats.currentValue}
+          pending={quotesPending}
+          detail={`Invested ${formatCurrency(stats.invested)}`}
+          metrics={summaryMetrics}
+        />
 
-      {/* Money Locations */}
-      <Card
-        className="campaign-detail-card money-locations-card"
-        title={
-          <span style={{ color: "#e2e8f0", display: "flex", alignItems: "center", gap: 8 }}>
-            <BankOutlined /> Money Locations
-          </span>
-        }
-        bordered={false}
-        style={{ marginBottom: 24 }}
-        extra={
-          editingLocations ?
-            <Space className="money-location-edit-actions">
-              <Button
-                onClick={() => {
-                  setLocalLocations(campaign.moneyLocations);
-                  setEditingLocations(false);
-                }}>
-                Cancel
-              </Button>
-              <Button type="primary" onClick={saveLocations}>
-                Save
-              </Button>
-            </Space>
-          : <Button type="text" onClick={() => setEditingLocations(true)}>
-              Edit
-            </Button>
-        }>
-        {editingLocations ?
-          <div>
-            {localLocations.map((loc, i) => (
-              <div
-                key={loc._id || i}
-                className="money-location-edit-row"
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  marginBottom: 10,
-                  padding: 10,
-                  background: "#0f1629",
-                  borderRadius: 8,
-                  border: "1px solid #1e2a3a",
-                }}>
-                <Input
-                  value={loc.name}
-                  onChange={(e) => {
-                    const updated = [...localLocations];
-                    updated[i] = { ...updated[i], name: e.target.value };
-                    setLocalLocations(updated);
-                  }}
-                  placeholder="Name"
-                  style={{ flex: 2, minWidth: 0 }}
-                />
-                <Select
-                  value={loc.type}
-                  onChange={(v) => {
-                    const updated = [...localLocations];
-                    updated[i] = { ...updated[i], type: v as MoneyLocation["type"] };
-                    setLocalLocations(updated);
-                  }}
-                  style={{ flex: 1, minWidth: 0 }}
-                  options={[
-                    { label: "PayPal", value: "PayPal" },
-                    { label: "Kraken", value: "Kraken" },
-                    { label: "Fidelity Roth Clara", value: "Fidelity Roth Clara" },
-                    { label: "Fidelity Roth Dan", value: "Fidelity Roth Dan" },
-                    { label: "Fidelity Dan", value: "Fidelity Dan" },
-                    { label: "Charles Schwab", value: "Charles Schwab" },
-                  ]}
-                />
+        <section className="campaigns-section" aria-labelledby="money-locations-title">
+          <div className="campaigns-section-header">
+            <h2 id="money-locations-title" className="campaigns-section-title">
+              Money Locations
+            </h2>
+            {editingLocations ?
+              <Space className="money-location-edit-actions">
                 <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => setLocalLocations(localLocations.filter((_, j) => j !== i))}
-                />
-              </div>
-            ))}
-            <Button
-              type="dashed"
-              onClick={() => setLocalLocations([...localLocations, { name: "", type: "Fidelity Dan" }])}
-              icon={<PlusOutlined />}
-              block>
-              Add Location
-            </Button>
-          </div>
-        : campaign.moneyLocations.length === 0 ?
-          <Empty
-            description={<span style={{ color: "#64748b" }}>No money locations. Click Edit to add.</span>}
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          />
-        : <Row gutter={16}>
-            {campaign.moneyLocations.map((loc) => {
-              const stats = loc._id ? locationStats[loc._id] : undefined;
-
-              return (
-                <Col key={loc._id} xs={24} md={12} lg={8}>
-                  <Card size="small" style={{ background: "#0f1629", border: "1px solid #1e2a3a", marginBottom: 8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                      <div>
-                        <div style={{ fontWeight: 600, color: "#e2e8f0", marginBottom: 4 }}>{loc.name}</div>
-                        <Tag color="default">{loc.type}</Tag>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4 }}>Positions</div>
-                        <div style={{ fontSize: 18, fontWeight: 800, color: "#e2e8f0" }}>{stats?.stockCount ?? 0}</div>
-                      </div>
-                    </div>
-                  </Card>
-                </Col>
-              );
-            })}
-          </Row>
-        }
-      </Card>
-
-      {/* Stocks Area */}
-      <Card
-        className="campaign-detail-card campaign-stocks-card"
-        title={
-          <div className="stocks-card-title">
-            <span className="stocks-card-heading">Stocks</span>
-            <Space className="stocks-card-actions">
-              <Segmented
-                options={[
-                  { value: "list", icon: <UnorderedListOutlined /> },
-                  { value: "candlestick", icon: <AppstoreOutlined /> },
-                  { value: "area", icon: <LineChartOutlined /> },
-                ]}
-                value={viewMode}
-                onChange={(v) => setViewMode(v as "list" | "candlestick" | "area")}
-              />
-              <Button type="primary" icon={<PlusOutlined />} className="stocks-add-btn" onClick={() => setAddStockModal(true)}>
-                Add Stock
+                  onClick={() => {
+                    setLocalLocations(campaign.moneyLocations);
+                    setEditingLocations(false);
+                  }}>
+                  Cancel
+                </Button>
+                <Button type="primary" onClick={saveLocations}>
+                  Save
+                </Button>
+              </Space>
+            : <Button type="text" onClick={() => setEditingLocations(true)}>
+                Edit
               </Button>
-            </Space>
+            }
           </div>
-        }
-        bordered={false}>
-        {campaign.stocks.length === 0 ?
-          <Empty
-            description={<span style={{ color: "#64748b" }}>No stocks in this campaign yet.</span>}
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          />
-        : viewMode === "list" ?
-          <>
-            {activeStockRows.length > 0 && (
-              <>
-                <div className="desktop-stock-table">
-                  <Table
-                    dataSource={activeStockRows}
-                    columns={stockColumns}
-                    pagination={false}
-                    expandable={stockExpandable}
-                    rowClassName={getStockRowClassName}
-                    scroll={{ x: 1300 }}
+
+          {editingLocations ?
+            <div className="campaigns-panel campaigns-panel-padded">
+              {localLocations.map((loc, i) => (
+                <div key={loc._id || i} className="money-location-edit-row">
+                  <Input
+                    value={loc.name}
+                    onChange={(e) => {
+                      const updated = [...localLocations];
+                      updated[i] = { ...updated[i], name: e.target.value };
+                      setLocalLocations(updated);
+                    }}
+                    placeholder="Name"
+                    style={{ flex: 2, minWidth: 0 }}
+                  />
+                  <Select
+                    value={loc.type}
+                    onChange={(v) => {
+                      const updated = [...localLocations];
+                      updated[i] = { ...updated[i], type: v as MoneyLocation["type"] };
+                      setLocalLocations(updated);
+                    }}
+                    style={{ flex: 1, minWidth: 0 }}
+                    options={[
+                      { label: "PayPal", value: "PayPal" },
+                      { label: "Kraken", value: "Kraken" },
+                      { label: "Fidelity Roth Clara", value: "Fidelity Roth Clara" },
+                      { label: "Fidelity Roth Dan", value: "Fidelity Roth Dan" },
+                      { label: "Fidelity Dan", value: "Fidelity Dan" },
+                      { label: "Charles Schwab", value: "Charles Schwab" },
+                    ]}
+                  />
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    aria-label="Remove location"
+                    onClick={() => setLocalLocations(localLocations.filter((_, j) => j !== i))}
                   />
                 </div>
-                <div className="mobile-stock-cards">{renderMobileStockCards(activeStocks)}</div>
-              </>
-            )}
+              ))}
+              <Button
+                type="dashed"
+                onClick={() => setLocalLocations([...localLocations, { name: "", type: "Fidelity Dan" }])}
+                icon={<PlusOutlined />}
+                block>
+                Add Location
+              </Button>
+            </div>
+          : campaign.moneyLocations.length === 0 ?
+            <div className="campaigns-panel campaigns-panel-padded">
+              <Empty
+                description={<span style={{ color: "var(--text-secondary)" }}>No money locations. Click Edit to add.</span>}
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            </div>
+          : <div className="money-location-grid">
+              {campaign.moneyLocations.map((loc) => {
+                const positionCount = (loc._id && locationStats[loc._id]?.stockCount) || 0;
 
-            {soldStockRows.length > 0 && (
-              <div style={{ marginTop: activeStockRows.length > 0 ? 28 : 0 }}>
-                <Divider titlePlacement="start" style={{ color: "#fca5a5", margin: "0 0 16px" }}>
-                  Sold Positions
-                </Divider>
-                <div
-                  style={{
-                    background: "rgba(127, 29, 29, 0.16)",
-                    border: "1px solid rgba(248, 113, 113, 0.35)",
-                    borderRadius: 12,
-                    padding: 12,
-                  }}>
-                  <div style={{ color: "#fca5a5", fontSize: 13, marginBottom: 12 }}>
-                    These companies are fully sold and kept here for realized P&L and transaction history.
+                return (
+                  <div key={loc._id} className="money-location-tile">
+                    <div className="money-location-tile-name">
+                      <strong>{loc.name}</strong>
+                      {/* Most locations are named after their type; only show it when it adds something. */}
+                      {loc.type !== loc.name && <span>{loc.type}</span>}
+                    </div>
+                    <div className="money-location-tile-count">
+                      <strong>{positionCount}</strong>
+                      <span>{positionCount === 1 ? "position" : "positions"}</span>
+                    </div>
                   </div>
-                  <div className="desktop-stock-table">
+                );
+              })}
+            </div>
+          }
+        </section>
+
+        <CampaignPerformance campaign={campaign} quotes={quotes} range={globalTimeRange} />
+
+        <section className="campaigns-section" aria-labelledby="stocks-title">
+          <div className="campaigns-section-header">
+            <h2 id="stocks-title" className="campaigns-section-title">
+              Stocks {activeStocks.length > 0 && <span className="campaigns-section-count">{activeStocks.length}</span>}
+            </h2>
+            <Segmented
+              options={[
+                { value: "list", icon: <UnorderedListOutlined />, title: "List" },
+                { value: "candlestick", icon: <AppstoreOutlined />, title: "Candlestick charts" },
+                { value: "area", icon: <LineChartOutlined />, title: "Area charts" },
+              ]}
+              value={viewMode}
+              onChange={(v) => setViewMode(v as "list" | "candlestick" | "area")}
+            />
+          </div>
+
+          {campaign.stocks.length === 0 ?
+            <div className="campaigns-panel campaigns-panel-padded">
+              <Empty
+                description={<span style={{ color: "var(--text-secondary)" }}>No stocks in this campaign yet.</span>}
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            </div>
+          : viewMode === "list" ?
+            <>
+              {activeStockRows.length > 0 && (
+                <>
+                  <div className="desktop-stock-table campaigns-panel">
                     <Table
-                      dataSource={soldStockRows}
+                      dataSource={activeStockRows}
                       columns={stockColumns}
                       pagination={false}
                       expandable={stockExpandable}
@@ -1216,251 +1304,34 @@ export default function CampaignDetailPage() {
                       scroll={{ x: 1300 }}
                     />
                   </div>
-                  <div className="mobile-stock-cards">{renderMobileStockCards(soldStocks)}</div>
-                </div>
-              </div>
-            )}
-          </>
-        : <Row gutter={[24, 24]}>
-            {[...activeStocks, ...soldStocks].map((stock, index) => {
-              const markers: import("lightweight-charts").SeriesMarker<import("lightweight-charts").Time>[] = [];
-              const notifications = stock.notifications || [];
-              const soldOut = isSoldOut(stock);
-              const starred = Boolean(stock.isStarred);
-              const alertRules: ChartAlertRule[] = notifications.map((notification) => ({
-                id: notification._id,
-                type: notification.type,
-                targetPrice: notification.targetPrice,
-                targetPercent: notification.targetPercent,
-                referencePrice: notification.referencePrice,
-                createdAt: notification.createdAt,
-              }));
-              const quote = quotes[stock.symbol];
-              const currentPrice = quote?.currentPrice;
-              const remaining = getRemainingShares(stock);
-              const lastDayMovement = getDisplayLastDayMovement(stock, quote);
-              const priceForPnl = currentPrice ?? stock.buyPrice;
-              const unrealized = remaining * (priceForPnl - stock.buyPrice);
-              const unrealizedPct = ((priceForPnl - stock.buyPrice) / stock.buyPrice) * 100;
-              const realized = getRealizedPnL(stock);
-              const realizedPct = getRealizedPnLPercent(stock);
-              const soldPrice = getAverageSoldPrice(stock);
-              const triggeredCount =
-                currentPrice == null ? 0 : (
-                  notifications.filter((notification) => {
-                    const targetPrice = getNotificationTargetPrice(notification);
-                    if (targetPrice == null) return false;
-                    return notification.type === "above" ? currentPrice >= targetPrice : currentPrice <= targetPrice;
-                  }).length
-                );
+                  <div className="mobile-stock-cards">{renderMobileStockCards(activeStocks)}</div>
+                </>
+              )}
 
-              if (stock.buyDate) {
-                const d = new Date(stock.buyDate);
-                const timeStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-                markers.push({
-                  time: timeStr as unknown as import("lightweight-charts").Time,
-                  position: "belowBar",
-                  color: "#22c55e",
-                  shape: "arrowUp",
-                  text: `Buy @ $${stock.buyPrice}`,
-                });
-              }
-
-              if (stock.transactions && stock.transactions.length > 0) {
-                stock.transactions.forEach((t) => {
-                  if (t.type === "sell" && t.date) {
-                    const d = new Date(t.date);
-                    const timeStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
-                    markers.push({
-                      time: timeStr as unknown as import("lightweight-charts").Time,
-                      position: "aboveBar",
-                      color: "#ef4444",
-                      shape: "arrowDown",
-                      text: `Sell @ $${t.price}`,
-                    });
-                  }
-                });
-              }
-
-              return (
-                <React.Fragment key={stock._id}>
-                  {index === activeStocks.length && soldStocks.length > 0 && (
-                    <Col span={24}>
-                      <Divider titlePlacement="start" style={{ color: "#fca5a5", margin: "4px 0 -4px" }}>
-                        Sold Positions
-                      </Divider>
-                    </Col>
-                  )}
-                  <Col xs={24} lg={12}>
-                    <div
-                      className={`chart-stock-card ${soldOut ? "chart-stock-card-sold" : ""} ${starred ? "chart-stock-card-starred" : ""}`}
-                      style={{
-                        background:
-                          soldOut ? "rgba(127, 29, 29, 0.14)"
-                          : starred ? "rgba(120, 53, 15, 0.18)"
-                          : "#0f1629",
-                        border:
-                          soldOut ? "1px solid rgba(248, 113, 113, 0.35)"
-                          : starred ? "1px solid rgba(245, 158, 11, 0.42)"
-                          : "1px solid #1e2a3a",
-                        overflow: "hidden",
-                      }}>
-                      <div
-                        className="chart-stock-card-header"
-                        style={{
-                          padding: "12px 16px",
-                          borderBottom:
-                            soldOut ? "1px solid rgba(248, 113, 113, 0.28)"
-                            : starred ? "1px solid rgba(245, 158, 11, 0.28)"
-                            : "1px solid #1e2a3a",
-                          display: "flex",
-                          justifyContent: "space-between",
-                        }}>
-                        <Space size="small" className="chart-stock-title">
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={starred ? <StarFilled /> : <StarOutlined />}
-                            style={{ color: starred ? "#f59e0b" : "#64748b" }}
-                            title={starred ? "Unstar position" : "Star position"}
-                            onClick={() => {
-                              if (stock._id) toggleStockStarred(stock._id);
-                            }}
-                          />
-                          <span style={{ fontWeight: 700, fontSize: 16, color: "#e2e8f0" }}>{stock.symbol}</span>
-                          {soldOut && <Tag color="red">Sold</Tag>}
-                          {notifications.length > 0 && (
-                            <Tag color={triggeredCount > 0 ? "red" : "gold"}>
-                              {triggeredCount > 0 ?
-                                `${triggeredCount} hit`
-                              : `${notifications.length} alert${notifications.length === 1 ? "" : "s"}`}
-                            </Tag>
-                          )}
-                        </Space>
-                        <StockActionsDropdown
-                          hasRemaining={!soldOut}
-                          showAlerts
-                          onAlerts={() => {
-                            setNotificationStock(stock);
-                            notificationForm.setFieldsValue({ thresholdType: "price", direction: "above" });
-                          }}
-                          onSell={() => setSellStock(stock)}
-                          onBuyMore={() => setBuyMoreStock(stock)}
-                          onEdit={() => setEditStock(stock)}
-                          onDelete={() => deleteStock(stock._id!)}
-                        />
-                      </div>
-                      <StockChart
-                        symbol={stock.symbol}
-                        height={220}
-                        hideToolbar
-                        activeRangeOverride={globalTimeRange}
-                        chartType={viewMode === "area" ? "area" : "candlestick"}
-                        markers={markers}
-                        alertRules={alertRules}
+              {soldStockRows.length > 0 &&
+                renderSoldSection(
+                  <>
+                    <div className="desktop-stock-table campaigns-panel">
+                      <Table
+                        dataSource={soldStockRows}
+                        columns={stockColumns}
+                        pagination={false}
+                        expandable={stockExpandable}
+                        rowClassName={getStockRowClassName}
+                        scroll={{ x: 1300 }}
                       />
-                      {(soldOut || viewMode === "area") && (
-                        <div
-                          className={cn(
-                            "grid grid-cols-2 overflow-hidden",
-                            soldOut ? "border-destructive/30"
-                            : starred ? "border-amber-500/30"
-                            : "border-border",
-                          )}>
-                          {soldOut ?
-                            <>
-                              <div className="min-w-0 border border-border bg-card/50 p-2.5">
-                                <span className={METRIC_LABEL_CLASS}>Buy Price</span>
-                                <span className={cn(METRIC_VALUE_CLASS, "text-foreground")}>{formatCurrency(stock.buyPrice)}</span>
-                              </div>
-                              <div className="min-w-0 border border-border bg-card/50 p-2.5">
-                                <span className={METRIC_LABEL_CLASS}>Sold Price</span>
-                                <span className={cn(METRIC_VALUE_CLASS, "text-foreground")}>
-                                  {soldPrice != null ? formatCurrency(soldPrice) : "—"}
-                                </span>
-                              </div>
-                              <div className="min-w-0 border border-border bg-card/50 p-2.5 rounded-bl-lg">
-                                <span className={METRIC_LABEL_CLASS}>Current Price</span>
-                                {quotesPending ?
-                                  <QuoteCellSkeleton width={88} />
-                                : currentPrice != null ?
-                                  <span
-                                    className={cn(
-                                      METRIC_VALUE_CLASS,
-                                      currentPrice > stock.buyPrice && "text-green-500",
-                                      currentPrice < stock.buyPrice && "text-destructive",
-                                      currentPrice === stock.buyPrice && "text-muted-foreground",
-                                    )}>
-                                    {formatCurrency(currentPrice)}
-                                  </span>
-                                : <span className={cn(METRIC_VALUE_CLASS, "text-muted-foreground")}>—</span>}
-                              </div>
-                              <div
-                                className={cn(
-                                  "min-w-0 border !border-neutral-500/10 bg-card/50 p-2.5 rounded-br-lg",
-                                  getPnLToneClass(realized),
-                                )}>
-                                <span className={METRIC_LABEL_CLASS}>Realized P&L</span>
-                                {realized !== 0 ?
-                                  <PnLDisplay value={realized} percentage={realizedPct} size="small" />
-                                : <span className={cn(METRIC_VALUE_CLASS, "text-muted-foreground")}>—</span>}
-                              </div>
-                            </>
-                          : <>
-                              <div className="min-w-0 border border-border bg-card/50 p-2.5">
-                                <span className={METRIC_LABEL_CLASS}>Buy Price</span>
-                                <span className={cn(METRIC_VALUE_CLASS, "text-foreground")}>{formatCurrency(stock.buyPrice)}</span>
-                              </div>
-                              <div className={cn("min-w-0 border border-border p-2.5")}>
-                                <span className={METRIC_LABEL_CLASS}>Current Price</span>
-                                {quotesPending ?
-                                  <QuoteCellSkeleton width={88} />
-                                : currentPrice != null ?
-                                  <span
-                                    className={cn(
-                                      METRIC_VALUE_CLASS,
-                                      currentPrice > stock.buyPrice && "text-green-500",
-                                      currentPrice < stock.buyPrice && "text-destructive",
-                                      currentPrice === stock.buyPrice && "text-muted-foreground",
-                                    )}>
-                                    {formatCurrency(currentPrice)}
-                                  </span>
-                                : <span className={cn(METRIC_VALUE_CLASS, "text-muted-foreground")}>—</span>}
-                              </div>
-                              <div
-                                className={cn(
-                                  "min-w-0 border !border-neutral-500/10 bg-card/50 p-2.5 rounded-bl-lg",
-                                  lastDayMovement && getPnLToneClass(lastDayMovement.value),
-                                )}>
-                                <span className={METRIC_LABEL_CLASS}>Last Day</span>
-                                {quotesPending ?
-                                  <QuoteCellSkeleton width={88} />
-                                : lastDayMovement ?
-                                  <PnLDisplay value={lastDayMovement.value} percentage={lastDayMovement.percentage} size="small" />
-                                : <span className={cn(METRIC_VALUE_CLASS, "text-muted-foreground")}>—</span>}
-                              </div>
-                              <div
-                                className={cn(
-                                  "min-w-0 border !border-neutral-500/10 bg-card/50 p-2.5 rounded-br-lg",
-                                  getPnLToneClass(unrealized),
-                                )}>
-                                <span className={METRIC_LABEL_CLASS}>Unrealized P&L</span>
-                                {quotesPending ?
-                                  <QuoteCellSkeleton width={88} />
-                                : <PnLDisplay value={unrealized} percentage={unrealizedPct} size="small" />}
-                              </div>
-                            </>
-                          }
-                        </div>
-                      )}
                     </div>
-                  </Col>
-                </React.Fragment>
-              );
-            })}
-          </Row>
-        }
-      </Card>
+                    <div className="mobile-stock-cards">{renderMobileStockCards(soldStocks)}</div>
+                  </>,
+                )}
+            </>
+          : <>
+              {activeStocks.length > 0 && <div className="stock-chart-grid">{activeStocks.map(renderChartCard)}</div>}
+              {soldStocks.length > 0 && renderSoldSection(<div className="stock-chart-grid">{soldStocks.map(renderChartCard)}</div>)}
+            </>
+          }
+        </section>
+      </div>
 
       {/* Modals & Drawer */}
       <AddStockModal
@@ -1543,12 +1414,12 @@ export default function CampaignDetailPage() {
             </Form>
 
             <Divider titlePlacement="start" style={{ margin: "24px 0 12px" }}>
-              <span style={{ fontSize: 14, color: "#64748b" }}>Active alerts</span>
+              <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>Active alerts</span>
             </Divider>
 
             {(notificationStock.notifications || []).length === 0 ?
               <Empty
-                description={<span style={{ color: "#64748b" }}>No chart alerts for this stock yet.</span>}
+                description={<span style={{ color: "var(--text-secondary)" }}>No chart alerts for this stock yet.</span>}
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               />
             : <List

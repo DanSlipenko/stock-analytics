@@ -10,9 +10,10 @@ interface SymbolSearchProps {
   placeholder?: string;
   value?: string;
   style?: React.CSSProperties;
+  assetType?: 'stock' | 'crypto';
 }
 
-export default function SymbolSearch({ onSelect, placeholder = 'Search stocks...', value, style }: SymbolSearchProps) {
+export default function SymbolSearch({ onSelect, placeholder = 'Search stocks...', value, style, assetType }: SymbolSearchProps) {
   const [options, setOptions] = useState<{ value: string; label: React.ReactNode }[]>([]);
   const [inputValue, setInputValue] = useState(value || '');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -29,7 +30,8 @@ export default function SymbolSearch({ onSelect, placeholder = 'Search stocks...
 
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/stock/search?q=${encodeURIComponent(text)}`);
+        const typeQuery = assetType ? `&type=${assetType}` : '';
+        const res = await fetch(`/api/stock/search?q=${encodeURIComponent(text)}${typeQuery}`);
         if (res.ok) {
           const data = await res.json();
           setOptions(
@@ -52,7 +54,7 @@ export default function SymbolSearch({ onSelect, placeholder = 'Search stocks...
         console.error('Symbol search error:', e);
       }
     }, 300);
-  }, []);
+  }, [assetType]);
 
   const handleSelect = useCallback(
     (val: string, option: { value: string; label: React.ReactNode; description?: string }) => {

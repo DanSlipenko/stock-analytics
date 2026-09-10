@@ -262,7 +262,7 @@ export default function AssetsPage() {
             prefix={<DollarOutlined style={{ color: "#3b82f6" }} />}
             precision={2}
             valueStyle={{ color: "#e2e8f0" }}
-            formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+            formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           />
         </Card>
         <Card className="stat-card" bordered={false}>
@@ -273,7 +273,7 @@ export default function AssetsPage() {
               value={overallStats.currentValue}
               precision={2}
               valueStyle={{ color: "#e2e8f0" }}
-              formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+              formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             />
           }
         </Card>
@@ -296,7 +296,7 @@ export default function AssetsPage() {
             value={overallStats.realized}
             precision={2}
             valueStyle={{ color: overallStats.realized >= 0 ? "#22c55e" : "#ef4444" }}
-            formatter={(v) => `${Number(v) >= 0 ? "+" : ""}$${Math.abs(Number(v)).toLocaleString("en-US", { minimumFractionDigits: 2 })}`}
+            formatter={(v) => `${Number(v) >= 0 ? "+" : ""}$${Math.abs(Number(v)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           />
         </Card>
       </div>

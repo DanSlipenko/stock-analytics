@@ -52,8 +52,8 @@
   --bg-primary: #0a0e1a;
   --bg-secondary: #111827;
   --bg-tertiary: #1a2332;
-  --accent: #00d4aa;
-  --accent-glow: rgba(0, 212, 170, 0.15);
+  --accent: #f5f5f5;
+  --accent-glow: rgba(245, 245, 245, 0.15);
   --gain: #22c55e;
   --loss: #ef4444;
   --text-primary: #e2e8f0;
@@ -121,7 +121,7 @@ body {
 .page-header h1 {
   font-size: 28px;
   font-weight: 700;
-  background: linear-gradient(135deg, #e2e8f0 0%, #00d4aa 100%);
+  background: linear-gradient(135deg, #e2e8f0 0%, #f5f5f5 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -202,6 +202,45 @@ body {
   border: 1px solid var(--border);
 }
 
+.chart-comparison {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.chart-comparison-summary {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: calc(100% - 16px);
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(15, 22, 41, 0.94);
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.chart-comparison-dates {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.chart-comparison-summary strong {
+  font-size: 14px;
+}
+
 /* ---- Sidebar branding ---- */
 .sidebar-brand {
   padding: 13.5px 24px;
@@ -216,12 +255,12 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #00d4aa, #0891b2);
+  background: linear-gradient(135deg, #f5f5f5, #a3a3a3);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 18px;
-  color: white;
+  color: #171717;
   font-weight: 800;
 }
 
@@ -232,8 +271,7 @@ body {
   letter-spacing: -0.3px;
 }
 
-.mobile-header-brand,
-.mobile-bottom-nav {
+.mobile-header-brand {
   display: none;
 }
 
@@ -297,23 +335,47 @@ body {
 
 .stocks-time-range-bar {
   position: sticky;
-  top: 64px;
+  top: calc(76px + env(safe-area-inset-top, 0px));
   z-index: 45;
   display: flex;
   align-items: center;
-  margin: -8px 0 20px;
-  padding: 10px 14px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 20px;
+  padding: 0;
   border-radius: 12px;
   background: rgba(10, 14, 26, 0.94);
   border: 1px solid var(--shadcn-border);
   backdrop-filter: blur(12px);
 }
 
+.stocks-time-range-bar .time-range-group {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  width: 100%;
+}
+
+.stocks-time-range-bar .time-range-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 34px;
+  padding: 6px 12px;
+  line-height: 1.25;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.stocks-time-range-bar .time-range-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 1024px) {
   .stocks-time-range-bar {
-    top: 58px;
+    top: calc(70px + env(safe-area-inset-top, 0px));
     margin-bottom: 16px;
-    padding: 8px 12px;
   }
 }
 
@@ -523,7 +585,7 @@ body {
     margin-left: 0 !important;
   }
 
-  .app-header,
+  .app-header.ant-layout-header,
   .ant-layout-header {
     height: 58px;
     padding: 0 14px !important;
@@ -540,61 +602,37 @@ body {
     height: 34px;
   }
 
-  .app-content {
-    min-height: calc(100vh - 58px) !important;
-    padding-bottom: 76px;
-  }
-
-  .mobile-bottom-nav {
-    position: fixed;
-    right: 10px;
-    bottom: 10px;
-    left: 10px;
-    z-index: 110;
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
-    padding: 8px;
-    border: 1px solid rgba(30, 42, 58, 0.95);
-    border-radius: 18px;
-    background: rgba(15, 23, 42, 0.94);
-    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.42);
-    backdrop-filter: blur(14px);
-  }
-
-  .mobile-bottom-nav-item {
-    display: flex;
-    min-width: 0;
-    min-height: 48px;
-    flex-direction: column;
+  .mobile-menu-trigger {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    border: 0;
-    border-radius: 12px;
-    background: transparent;
-    color: #94a3b8;
-    font: inherit;
-    font-size: 11px;
-    font-weight: 600;
+    width: 36px;
+    height: 36px;
+    margin-left: -6px;
+    color: var(--text-primary) !important;
+    font-size: 18px;
   }
 
-  .mobile-bottom-nav-item svg {
-    width: 16px;
-    height: 16px;
+  .app-content {
+    min-height: calc(100vh - 58px) !important;
   }
+}
 
-  .mobile-bottom-nav-item span {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.mobile-nav-drawer .ant-drawer-header {
+  border-bottom: 1px solid var(--border);
+  background: #0f1629;
+}
 
-  .mobile-bottom-nav-item.active {
-    background: rgba(0, 212, 170, 0.14);
-    color: #64f0d4;
-  }
+.mobile-nav-drawer .ant-drawer-body {
+  background: #0f1629;
+}
+
+.mobile-nav-drawer .ant-drawer-close {
+  color: var(--text-secondary);
+}
+
+.mobile-nav-drawer .mobile-header-brand {
+  gap: 12px;
 }
 
 @media (max-width: 640px) {
@@ -634,10 +672,60 @@ body {
     margin-bottom: 6px;
   }
 
-  .stat-card .ant-statistic-content {
-    font-size: 17px;
+  /* antd's Statistic contentFontSize token (28px) outranks a plain class
+     selector, so this needs !important to win on phones. */
+  .stat-card .ant-statistic-content,
+  .stat-card .ant-statistic-content-value,
+  .stat-card .ant-statistic-content-value-int,
+  .stat-card .ant-statistic-content-value-decimal {
+    font-size: 17px !important;
     line-height: 1.2;
     overflow-wrap: anywhere;
+  }
+
+  .stat-card .ant-statistic-content-suffix {
+    font-size: 12px !important;
+  }
+
+  /* Card heads with an action button stack instead of clipping the title. */
+  .ant-card-head-wrapper {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Without an explicit width these sit centred in the stacked head. */
+  .ant-card-head-title,
+  .ant-card-extra {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .ant-card-head-title {
+    white-space: normal;
+    overflow: visible;
+  }
+
+  /* Keep any table that still doesn't fit inside its card. */
+  .data-table-card.ant-card > .ant-card-body {
+    padding: 12px;
+  }
+
+  .ant-table-wrapper {
+    max-width: 100%;
+  }
+
+  .ant-table-content {
+    overflow-x: auto;
+  }
+
+  .ant-table {
+    font-size: 12px;
+  }
+
+  .ant-table-thead > tr > th,
+  .ant-table-tbody > tr > td {
+    padding: 10px 8px !important;
   }
 
   .campaign-detail-card {
@@ -667,6 +755,10 @@ body {
 
   .campaign-detail-card .ant-card-body {
     padding: 14px;
+  }
+
+  .campaign-stocks-card.ant-card > .ant-card-body {
+    padding: 12px 8px;
   }
 
   .money-location-edit-actions,
@@ -716,6 +808,13 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
+  .campaign-stocks-card .stocks-card-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+  }
+
   .time-range-group {
     width: 100%;
     overflow-x: auto;
@@ -725,6 +824,27 @@ body {
   .time-range-btn {
     flex: 0 0 auto;
     padding: 5px 10px;
+  }
+
+  .stocks-time-range-bar {
+    position: fixed;
+    top: auto;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    width: auto;
+    margin: 0;
+    padding: 0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  .page-container:has(> .stocks-time-range-bar) {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .stocks-time-range-bar .time-range-btn {
+    min-height: 38px;
+    padding-inline: 0;
   }
 
   .desktop-stock-table {
@@ -739,6 +859,16 @@ body {
     align-items: stretch;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .campaign-stocks-card .chart-stock-card-header {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .campaign-stocks-card .chart-stock-title {
+    min-width: 0;
+    flex: 1;
   }
 
   .chart-stock-title,
@@ -780,6 +910,28 @@ body {
   }
 }
 
+/* ---- Header icon buttons ---- */
+/* Sized to sit level with the notification bell, which is a bare icon rather
+   than a button and so carries no AntD height of its own. */
+.header-icon-button.ant-btn {
+  color: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.header-icon-button.ant-btn:hover:not(:disabled) {
+  color: var(--accent) !important;
+  background: var(--accent-glow) !important;
+}
+
+.header-icon-button.ant-btn:disabled {
+  color: var(--text-secondary);
+}
+
 /* ---- Notification bell ---- */
 .notification-badge {
   position: relative;
@@ -807,6 +959,7 @@ body {
 
 /* ---- Time range buttons ---- */
 .time-range-group {
+  position: relative;
   display: flex;
   gap: 4px;
   background: var(--bg-primary);
@@ -815,6 +968,8 @@ body {
 }
 
 .time-range-btn {
+  position: relative;
+  isolation: isolate;
   padding: 4px 12px;
   border-radius: 6px;
   border: none;
@@ -823,111 +978,304 @@ body {
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease;
 }
 
-.time-range-btn:hover {
+.time-range-btn:not(.active):hover {
   color: var(--text-primary);
   background: var(--bg-tertiary);
 }
 
 .time-range-btn.active {
-  background: var(--accent);
   color: #0a0e1a;
   font-weight: 600;
 }
 
+.time-range-highlight {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+/* ---- Campaigns pages (list and detail) ----
+   Apple-style grouped surfaces on the app's navy palette: one quiet surface
+   colour, hairline separators, and hierarchy from size and weight instead of
+   borders and glows. Scoped to .campaigns-page so the shared .page-header,
+   .stat-card and .chart-stock-card styles on other pages are untouched. */
+.campaigns-page {
+  --campaigns-surface: var(--bg-secondary);
+  --campaigns-surface-hover: #151e30;
+  /* Closed campaigns and sold positions: the surface at half strength over the page, kept opaque. */
+  --campaigns-surface-inactive: #0e1320;
+  --campaigns-edge: rgba(226, 232, 240, 0.08);
+  --campaigns-edge-hover: rgba(226, 232, 240, 0.16);
+  /* 8% white over the surface, kept opaque so it can back the 1px grid gaps. */
+  --campaigns-separator: #222937;
+  --campaigns-focus: rgba(245, 245, 245, 0.85);
+}
+
+/* Layout breakpoints are container queries, so they track the space left
+   beside the sidebar rather than the viewport. On its own class because the
+   detail page's time-range bar is position: fixed on phones and must not sit
+   inside a query container. */
+.campaigns-container {
+  container: campaigns / inline-size;
+}
+
+/* Title and action share one row at every width; the shared phone rule
+   stacks them and stretches the button edge to edge. */
+.campaigns-page .page-header {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.campaigns-page .page-header h1 {
+  font-size: 32px;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+/* Portfolio summary: one grouped panel. The 1px grid gap over the separator
+   colour draws the hairlines however the cells wrap. */
+.campaigns-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 28px;
+  overflow: hidden;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 20px;
+  background: var(--campaigns-separator);
+}
+
+.campaigns-summary-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 18px 20px;
+  background: var(--campaigns-surface);
+}
+
+.campaigns-summary-hero {
+  grid-column: 1 / -1;
+}
+
+.campaigns-summary dt {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.campaigns-summary dd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* Tabular figures keep live balances from jittering as quotes tick. Only on
+   values that never go negative: Inter's tabular hyphen is figure-wide and
+   leaves a visible gap in "-$1,234". */
+.campaigns-summary-balance,
+.campaign-list-card-hero dd {
+  font-variant-numeric: tabular-nums;
+}
+
+.campaigns-summary-balance {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+
+.campaigns-summary-value {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+/* The percentage carries the colour, so the dollar figures above it stay white. */
+.change-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.change-capsule .anticon {
+  font-size: 10px;
+}
+
+.change-capsule-gain {
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.14);
+}
+
+.change-capsule-loss {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.change-capsule-flat {
+  color: var(--text-secondary);
+  background: rgba(148, 163, 184, 0.14);
+}
+
 /* ---- Campaign list cards ---- */
+.campaigns-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+  gap: 16px;
+}
+
+.campaigns-section {
+  margin-top: 36px;
+}
+
+.campaigns-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 14px;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.campaigns-section-count {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
 .campaign-list-card {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: radial-gradient(circle at top left, rgba(0, 212, 170, 0.08), transparent 34%), var(--bg-secondary);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  gap: 18px;
+  min-width: 0;
+  padding: 18px 20px 8px;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 20px;
+  background: var(--campaigns-surface);
+  /* A faint lit top edge in place of the old corner glow. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  /* The whole card opens the campaign; inner controls stop propagation. */
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.12s ease;
 }
 
-.campaign-list-card:not(.campaign-list-card-collapsed):hover {
-  transform: translateY(-2px);
-  border-color: rgba(226, 232, 240, 0.2);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+.campaign-list-card:hover {
+  border-color: var(--campaigns-edge-hover);
+  background: var(--campaigns-surface-hover);
 }
 
-.campaign-list-card-inactive {
-  background: radial-gradient(circle at top left, rgba(127, 29, 29, 0.12), transparent 34%), rgba(15, 22, 41, 0.92);
-  border-color: rgba(248, 113, 113, 0.22);
+/* Press feedback, skipped when the press lands on the actions menu. */
+.campaign-list-card:active:not(:has(.campaign-list-card-menu :active)) {
+  transform: scale(0.992);
 }
 
 .campaign-list-card-collapsed {
-  background: rgba(10, 14, 26, 0.72);
+  grid-column: 1 / -1;
+  padding-block: 14px;
+}
+
+/* Closed and sold-out campaigns recede. Dimmed, never red: red already means a loss. */
+.campaign-list-card-inactive {
+  border-color: rgba(226, 232, 240, 0.05);
+  background: var(--campaigns-surface-inactive);
+}
+
+.campaign-list-card-inactive .campaign-list-card-title {
+  color: var(--text-secondary);
 }
 
 .campaign-list-card-header {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
+  align-items: flex-start;
+  gap: 12px;
   min-width: 0;
 }
 
 .campaign-list-card-collapsed .campaign-list-card-header {
   flex-wrap: wrap;
-}
-
-.campaign-list-card-toggle {
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: rgba(15, 22, 41, 0.72);
-  color: var(--text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
-.campaign-list-card-toggle:hover {
-  color: var(--text-primary);
-  border-color: rgba(0, 212, 170, 0.35);
-  background: rgba(0, 212, 170, 0.08);
+.campaign-list-card-heading {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.campaign-list-card-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
 }
 
 .campaign-list-card-title {
-  border: none;
-  background: transparent;
-  padding: 0;
+  min-width: 0;
   margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
   text-align: left;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.25;
+  overflow-wrap: anywhere;
   color: var(--text-primary);
   cursor: pointer;
-  min-width: 0;
-  flex: 1 1 auto;
 }
 
 .campaign-list-card-title:hover {
-  color: #8ff3dc;
+  color: #fafafa;
 }
 
-.campaign-list-card-badges {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
+.campaign-list-card-title:focus-visible {
+  outline: 2px solid var(--campaigns-focus);
+  outline-offset: 3px;
 }
 
-.campaign-list-card-meta {
+.campaign-list-card-subtitle {
+  font-size: 13px;
+  line-height: 1.4;
   color: var(--text-secondary);
+}
+
+.campaign-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  white-space: nowrap;
+  line-height: 1.4;
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.12);
 }
 
 .campaign-list-card-summary {
@@ -935,36 +1283,719 @@ body {
   min-width: 0;
 }
 
-.campaign-list-card-view-btn {
+/* Nudged up and out so the 28px button lines up optically with the title. */
+.campaign-list-card-menu {
   flex-shrink: 0;
+  margin: -3px -6px 0 0;
+}
+
+.campaign-list-card-collapsed .campaign-list-card-menu {
+  margin-top: 0;
 }
 
 .campaign-list-card-body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 0 20px 20px;
+  gap: 12px;
 }
 
-.campaign-list-card-actions {
+.campaign-list-card-hero dt,
+.campaign-list-card-row dt {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.campaign-list-card-hero dt {
+  font-weight: 500;
+}
+
+.campaign-list-card-hero dd {
+  margin-top: 2px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.campaign-list-card-rows {
+  border-top: 1px solid var(--campaigns-separator);
+}
+
+.campaign-list-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  min-height: 40px;
+  padding-block: 6px;
+}
+
+.campaign-list-card-row + .campaign-list-card-row {
+  border-top: 1px solid var(--campaigns-separator);
+}
+
+.campaign-list-card-row dd {
+  margin-left: auto;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: right;
+  color: var(--text-primary);
+}
+
+@container campaigns (min-width: 680px) {
+  .campaigns-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container campaigns (min-width: 1040px) {
+  .campaigns-summary {
+    grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr));
+  }
+
+  .campaigns-summary-hero {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .campaigns-page .page-header h1 {
+    font-size: 28px;
+  }
+}
+
+@container campaigns (max-width: 560px) {
+  .campaigns-summary-cell {
+    padding: 16px;
+  }
+
+  .campaigns-summary-balance {
+    font-size: 30px;
+  }
+
+  .campaigns-summary-value {
+    font-size: 17px;
+  }
+
+  /* Collapsed rows: the P&L drops under the name, the menu stays top-right. */
+  .campaign-list-card-collapsed .campaign-list-card-summary {
+    order: 1;
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .campaigns-page {
+    --campaigns-edge: rgba(226, 232, 240, 0.3);
+    --campaigns-edge-hover: rgba(226, 232, 240, 0.5);
+    --campaigns-separator: #3a4456;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .campaigns-page .animate-in {
+    animation: none;
+  }
+
+  .campaign-list-card,
+  .performance-chart {
+    transition: none;
+  }
+
+  .campaign-list-card:active:not(:has(.campaign-list-card-menu :active)) {
+    transform: none;
+  }
+}
+
+/* ---- Campaign detail page ---- */
+.campaigns-page .campaign-page-heading {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+/* A back button labelled with where it goes, as in an iOS navigation bar. */
+.campaigns-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  margin: 0 0 4px -8px;
+  padding: 2px 10px 2px 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.campaigns-back-button .anticon {
+  font-size: 13px;
+}
+
+.campaigns-back-button:hover {
+  color: var(--text-primary);
+  background: rgba(226, 232, 240, 0.06);
+}
+
+.campaigns-back-button:focus-visible {
+  outline: 2px solid var(--campaigns-focus);
+  outline-offset: 2px;
+}
+
+.campaign-page-subtitle {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.campaigns-page .campaigns-primary-action {
+  font-weight: 600;
+}
+
+.campaigns-summary-detail {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.campaigns-summary + .campaigns-section {
+  margin-top: 0;
+}
+
+.campaigns-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 14px;
+}
+
+.campaigns-section-header .campaigns-section-title {
+  margin-bottom: 0;
+}
+
+.campaigns-subsection {
+  margin-top: 32px;
+}
+
+.campaigns-section-header + .campaigns-subsection {
+  margin-top: 0;
+}
+
+.campaigns-subsection .campaigns-section-title {
+  margin-bottom: 4px;
+  font-size: 17px;
+}
+
+.campaigns-section-footnote {
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.campaigns-panel {
+  overflow: hidden;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 20px;
+  background: var(--campaigns-surface);
+}
+
+.campaigns-panel-padded {
+  padding: 16px;
+}
+
+/* Money locations */
+.money-location-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid var(--border);
-  background: rgba(10, 14, 26, 0.42);
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+  gap: 12px;
 }
 
-@media (max-width: 1024px) {
-  .campaign-list-card-summary {
-    width: 100%;
-    margin-left: 42px;
-  }
+.money-location-tile {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 16px;
+  background: var(--campaigns-surface);
+}
 
-  .campaign-list-card-view-btn {
-    margin-left: auto;
-  }
+.money-location-tile-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
 
-  .campaign-list-card-actions {
-    grid-template-columns: 1fr;
+.money-location-tile-name strong {
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.money-location-tile-name span,
+.money-location-tile-count span {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.money-location-tile-count {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-end;
+}
+
+.money-location-tile-count strong {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+  color: var(--text-primary);
+}
+
+.money-location-edit-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 12px;
+  background: var(--bg-primary);
+}
+
+/* Performance: the campaign's money over the range chosen in the bar above.
+   The readout carries the current figure, the chart's legend and its text
+   alternative in one block, so nothing on the chart is hover-only. */
+.performance-panel {
+  overflow: hidden;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 20px;
+  background: var(--campaigns-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.performance-readout,
+.performance-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 20px 12px;
+}
+
+.performance-skeleton {
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.performance-readout dt {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.performance-readout dd {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Smaller than the summary's balance: this panel supports the hero figure at
+   the top of the page, it doesn't compete with it. */
+.performance-readout-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.performance-readout-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.performance-readout-detail {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Line key for the dashed cost line on the chart. */
+.performance-key {
+  flex-shrink: 0;
+  width: 15px;
+  border-top: 2px dashed #64748b;
+}
+
+.performance-chart {
+  position: relative;
+  transition: opacity 0.2s ease;
+}
+
+/* A refetch holds the last render rather than flashing a skeleton. */
+.performance-chart[aria-busy="true"] {
+  opacity: 0.55;
+}
+
+.performance-chart:focus-visible {
+  outline: 2px solid var(--campaigns-focus);
+  outline-offset: -2px;
+}
+
+.performance-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  border-top: 1px solid var(--campaigns-separator);
+  background: var(--campaigns-separator);
+}
+
+.performance-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 16px;
+  background: var(--campaigns-surface);
+}
+
+.performance-metrics dt {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.performance-metrics dd {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.performance-metrics strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.performance-metrics small {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+@container campaigns (min-width: 560px) {
+  .performance-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.performance-notice {
+  padding: 16px 20px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.performance-notice-footnote {
+  border-top: 1px solid var(--campaigns-separator);
+}
+
+/* Status capsules beyond the neutral one */
+.campaign-status-alert {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.campaign-status-hit {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.16);
+}
+
+/* Chart cards */
+.stock-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@container campaigns (min-width: 820px) {
+  .stock-chart-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.campaigns-page .chart-stock-card {
+  overflow: hidden;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 20px;
+  background: var(--campaigns-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Starred keeps a faint amber edge to echo its star. Sold recedes the way
+   closed campaigns do — never red, which already means a loss. */
+.campaigns-page .chart-stock-card-starred {
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.campaigns-page .chart-stock-card-sold {
+  border-color: rgba(226, 232, 240, 0.05);
+  background: var(--campaigns-surface-inactive);
+}
+
+/* Beats the shared phone rule that stacks this header into a column. */
+.campaigns-page .chart-stock-card-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px 10px 8px;
+}
+
+.campaigns-page .chart-stock-title {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chart-stock-symbol {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.campaigns-page .chart-stock-card-sold .chart-stock-symbol {
+  color: var(--text-secondary);
+}
+
+.campaigns-page .chart-stock-card .chart-container {
+  border-color: var(--campaigns-separator);
+}
+
+.chart-stock-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--campaigns-separator);
+}
+
+.chart-stock-metrics > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px 16px;
+  background: var(--campaigns-surface);
+}
+
+.campaigns-page .chart-stock-card-sold .chart-stock-metrics > div {
+  background: var(--campaigns-surface-inactive);
+}
+
+.chart-stock-metrics dt {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chart-stock-metrics dd {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Stock table, inside a panel */
+.campaigns-page .campaigns-panel .ant-table {
+  background: transparent;
+}
+
+.campaigns-page .campaigns-panel .ant-table-thead > tr > th {
+  border-bottom-color: var(--campaigns-separator);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.campaigns-page .campaigns-panel .ant-table-thead > tr > th::before {
+  display: none !important;
+}
+
+.campaigns-page .campaigns-panel .ant-table-tbody > tr > td {
+  border-bottom-color: var(--campaigns-separator);
+}
+
+.campaigns-page .campaigns-panel .ant-table-tbody > tr:last-child > td {
+  border-bottom: none;
+}
+
+.campaigns-page .campaign-stock-row-starred > td {
+  background: rgba(245, 158, 11, 0.05) !important;
+}
+
+.campaigns-page .campaign-stock-row-starred:hover > td {
+  background: rgba(245, 158, 11, 0.09) !important;
+}
+
+.campaigns-page .campaign-stock-row-sold > td {
+  background: transparent !important;
+}
+
+.campaigns-page .campaign-stock-row-sold:hover > td {
+  background: rgba(245, 245, 245, 0.04) !important;
+}
+
+.campaigns-page .stock-symbol-link.ant-btn {
+  height: auto;
+  padding: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.campaigns-page .stock-symbol-link-sold.ant-btn {
+  color: var(--text-secondary);
+}
+
+.campaigns-page .stock-table-skeleton {
+  border-color: var(--campaigns-edge);
+  border-radius: 20px;
+  background: var(--campaigns-surface);
+}
+
+.campaigns-page .stock-table-skeleton-row {
+  border-bottom-color: var(--campaigns-separator);
+}
+
+.campaigns-page .stock-table-skeleton-header {
+  background: transparent;
+}
+
+/* Mobile stock cards (list view on phones) */
+.campaigns-page .mobile-stock-card {
+  padding: 16px;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 20px;
+  background: var(--campaigns-surface);
+}
+
+.campaigns-page .mobile-stock-card-starred {
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.campaigns-page .mobile-stock-card-sold {
+  border-color: rgba(226, 232, 240, 0.05);
+  background: var(--campaigns-surface-inactive);
+}
+
+.campaigns-page .mobile-stock-symbol.ant-btn {
+  font-size: 17px;
+}
+
+.campaigns-page .mobile-stock-metrics {
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--campaigns-separator);
+}
+
+.campaigns-page .mobile-stock-metrics > div {
+  padding: 10px 12px;
+  border: none;
+  border-radius: 0;
+  background: var(--campaigns-surface);
+}
+
+.campaigns-page .mobile-stock-card-sold .mobile-stock-metrics > div {
+  background: var(--campaigns-surface-inactive);
+}
+
+/* An odd count would leave a bare cell in the hairline grid; the last one spans the row instead. */
+.campaigns-page .mobile-stock-metrics > div:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.campaigns-page .mobile-stock-metrics > div > span:first-child {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* The shared rule sizes every span in a metric as a label, PnLDisplay's
+   inner spans included; let those inherit PnLDisplay's own size again. */
+.campaigns-page .mobile-stock-metrics > div > span:not(:first-child) span {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.campaigns-page .mobile-stock-metrics strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.campaigns-page .mobile-stock-metrics small {
+  color: var(--text-secondary);
+}
+
+.campaigns-page .mobile-stock-funding,
+.campaigns-page .mobile-transaction-list,
+.campaigns-page .mobile-transaction-row + .mobile-transaction-row {
+  border-top-color: var(--campaigns-separator);
+}
+
+.campaigns-page .mobile-transaction-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* Time-range bar: a floating control (sticky on desktop, fixed on phones),
+   the one surface here that gets a glass material. */
+.campaigns-page .stocks-time-range-bar {
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 999px;
+  background: rgba(17, 24, 39, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.campaigns-page .stocks-time-range-bar .time-range-group {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.campaigns-page .stocks-time-range-bar .time-range-btn,
+.campaigns-page .stocks-time-range-bar .time-range-highlight {
+  border-radius: 999px !important;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .campaigns-page .stocks-time-range-bar {
+    background: var(--bg-secondary);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 
@@ -988,4 +2019,113 @@ body {
   font-size: 16px;
   color: var(--text-secondary);
   margin-bottom: 24px;
+}
+
+/* ==========================================================================
+   PWA — installed / standalone display mode
+   ========================================================================== */
+
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pwa-install-button {
+  color: var(--accent) !important;
+  font-weight: 600;
+}
+
+.pwa-install-button:hover {
+  background: var(--accent-glow) !important;
+}
+
+@media (max-width: 640px) {
+  /* Icon-only on phones — the header is tight next to the brand. */
+  .pwa-install-button-label {
+    display: none;
+  }
+}
+
+/* Installed on iOS the web view runs edge to edge: the status bar is
+   translucent and the viewport is `viewport-fit=cover`, so the layout has to
+   reserve the Dynamic Island / notch and home-indicator space itself.
+
+   Two deliberate choices here:
+
+   1. Not gated behind `@media (display-mode: standalone)`. The insets are 0 in
+      a browser tab, so these cost nothing there, and the layout no longer
+      depends on that media query being reported correctly.
+   2. Matched as `.app-header.ant-layout-header`, not `.app-header`. The mobile
+      block above sets `padding: 0 14px !important` at that same two-class
+      specificity; a single-class selector loses to it even with `!important`,
+      which silently leaves `padding-top` at 0 and pushes the header contents
+      up under the island. */
+.app-header.ant-layout-header {
+  height: calc(64px + env(safe-area-inset-top, 0px)) !important;
+  padding-top: env(safe-area-inset-top, 0px) !important;
+}
+
+.app-sidebar {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Keeps the last row of any page clear of the home indicator. */
+.app-content {
+  min-height: calc(100vh - 64px - env(safe-area-inset-top, 0px)) !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* The nav drawer is full height, so its title needs the same clearance. */
+.mobile-nav-drawer .ant-drawer-header {
+  padding-top: calc(16px + env(safe-area-inset-top, 0px)) !important;
+}
+
+/* Toasts are pinned to the viewport edges, so installed on iOS they land under
+   the Dynamic Island (messages, top-placed notifications) or the home indicator
+   (bottom-placed ones).
+
+   Nudged with a margin rather than by overriding antd's `top`/`bottom`: antd
+   sets those itself from its own defaults (8px for message, 24px for
+   notification) or from a `top`/`bottom` prop, and a margin composes with
+   whatever value it picks instead of hardcoding — and freezing — one of them.
+
+   `!important` is required, not defensive. antd's own reset is
+   `:where(.css-hash).ant-message { margin: 0 }` — `:where()` contributes no
+   specificity, so it ties a plain `.ant-message` rule here, and antd injects
+   its CSS-in-JS <style> after this stylesheet, winning on source order. */
+.ant-message {
+  margin-top: env(safe-area-inset-top, 0px) !important;
+}
+
+.ant-notification-top,
+.ant-notification-topLeft,
+.ant-notification-topRight {
+  margin-top: env(safe-area-inset-top, 0px) !important;
+}
+
+.ant-notification-bottom,
+.ant-notification-bottomLeft,
+.ant-notification-bottomRight {
+  margin-bottom: env(safe-area-inset-bottom, 0px) !important;
+}
+
+@media (max-width: 1024px) {
+  .app-header.ant-layout-header {
+    height: calc(58px + env(safe-area-inset-top, 0px)) !important;
+  }
+
+  /* Viewport-height math has to track the taller header, or the page ends up
+     one inset taller than the screen and scrolls for no reason. */
+  .app-content {
+    min-height: calc(100vh - 58px - env(safe-area-inset-top, 0px)) !important;
+  }
+}
+
+@media (display-mode: standalone) {
+  html,
+  body {
+    /* No browser chrome to rubber-band against once installed. */
+    overscroll-behavior-y: none;
+  }
 }

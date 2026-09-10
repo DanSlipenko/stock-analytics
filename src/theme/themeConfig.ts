@@ -3,7 +3,9 @@ import type { ThemeConfig } from 'antd';
 const theme: ThemeConfig = {
   token: {
     // Colors
-    colorPrimary: '#00d4aa',
+    colorPrimary: '#f5f5f5',
+    colorPrimaryHover: '#ffffff',
+    colorPrimaryActive: '#e5e5e5',
     colorBgBase: '#0a0e1a',
     colorBgContainer: '#111827',
     colorBgElevated: '#1a2332',
@@ -51,9 +53,9 @@ const theme: ThemeConfig = {
     },
     Menu: {
       darkItemBg: '#0f1629',
-      darkItemSelectedBg: 'rgba(0,212,170,0.12)',
-      darkItemHoverBg: 'rgba(0,212,170,0.06)',
-      darkItemSelectedColor: '#00d4aa',
+      darkItemSelectedBg: 'rgba(245,245,245,0.12)',
+      darkItemHoverBg: 'rgba(245,245,245,0.06)',
+      darkItemSelectedColor: '#f5f5f5',
       darkItemColor: '#94a3b8',
       itemBorderRadius: 8,
     },
@@ -65,11 +67,15 @@ const theme: ThemeConfig = {
       colorBgContainer: '#111827',
       headerBg: '#0f1629',
       headerColor: '#94a3b8',
-      rowHoverBg: 'rgba(0,212,170,0.04)',
+      rowHoverBg: 'rgba(245,245,245,0.04)',
       borderColor: '#1e2a3a',
     },
     Button: {
-      primaryShadow: '0 2px 8px rgba(0,212,170,0.3)',
+      // No glow/drop shadow on buttons — flat fills only.
+      primaryShadow: 'none',
+      defaultShadow: 'none',
+      dangerShadow: 'none',
+      primaryColor: '#171717',
     },
     Modal: {
       contentBg: '#111827',
@@ -84,13 +90,13 @@ const theme: ThemeConfig = {
     Input: {
       colorBgContainer: '#0f1629',
       colorBorder: '#1e2a3a',
-      activeBorderColor: '#00d4aa',
-      hoverBorderColor: '#00d4aa80',
+      activeBorderColor: '#f5f5f5',
+      hoverBorderColor: '#f5f5f580',
     },
     Select: {
       colorBgContainer: '#0f1629',
       colorBorder: '#1e2a3a',
-      optionSelectedBg: 'rgba(0,212,170,0.12)',
+      optionSelectedBg: 'rgba(245,245,245,0.12)',
     },
     InputNumber: {
       colorBgContainer: '#0f1629',
@@ -99,6 +105,8 @@ const theme: ThemeConfig = {
     DatePicker: {
       colorBgContainer: '#0f1629',
       colorBorder: '#1e2a3a',
+      // The selected day sits on the near-white primary fill.
+      colorTextLightSolid: '#171717',
     },
     Notification: {
       colorBgElevated: '#1a2332',

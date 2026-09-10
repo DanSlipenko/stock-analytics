@@ -3,6 +3,11 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Skeleton } from 'antd';
 import { StockCandle } from '@/types';
+import { attachChartComparison, type ChartComparison } from './chartComparison';
+import TimeRangeFilter from './TimeRangeFilter';
+import { TIME_RANGES, type TimeRange } from './timeRanges';
+
+export { TIME_RANGES, type TimeRange } from './timeRanges';
 
 type ChartTime = import('lightweight-charts').Time;
 type ChartMarker = import('lightweight-charts').SeriesMarker<ChartTime>;
@@ -32,17 +37,6 @@ type TradeOverlayMarker = {
   y: number;
   color: string;
 };
-
-export type TimeRange = '1W' | '1M' | '3M' | '6M' | '1Y' | 'ALL';
-
-export const TIME_RANGES: { key: TimeRange; label: string; seconds: number }[] = [
-  { key: '1W', label: '1W', seconds: 7 * 86400 },
-  { key: '1M', label: '1M', seconds: 30 * 86400 },
-  { key: '3M', label: '3M', seconds: 90 * 86400 },
-  { key: '6M', label: '6M', seconds: 180 * 86400 },
-  { key: '1Y', label: '1Y', seconds: 365 * 86400 },
-  { key: 'ALL', label: 'ALL', seconds: 5 * 365 * 86400 },
-];
 
 const parseTradeMarker = (marker: ChartMarker) => {
   const match = marker.text?.match(/^(Buy|Sell)\s*@\s*\$?([\d,.]+)/i);
@@ -145,6 +139,14 @@ const getAlertTriggerMarkers = (
   });
 };
 
+const comparisonDate = new Intl.DateTimeFormat('en-US', {
+  month: 'short', day: 'numeric', year: '2-digit', timeZone: 'UTC',
+});
+const comparisonPrice = new Intl.NumberFormat('en-US', {
+  style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+const compactPrice = (price: number) => String(Number(price.toFixed(2)));
+
 export default function StockChart({ symbol, height = 400, hideToolbar = false, activeRangeOverride, chartType = 'candlestick', markers, alertRules }: StockChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ReturnType<typeof import('lightweight-charts').createChart> | null>(null);
@@ -161,6 +163,8 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
   const [noData, setNoData] = useState(false);
   const [internalRange, setInternalRange] = useState<TimeRange>('3M');
   const [tradeOverlays, setTradeOverlays] = useState<TradeOverlayMarker[]>([]);
+  const [comparison, setComparison] = useState<ChartComparison | null>(null);
+  const comparingRef = useRef(false);
   
   // Overlay state
   const [tooltip, setTooltip] = useState<{
@@ -202,6 +206,10 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
     dataTimesRef.current = new Set();
     candlesRef.current = [];
     setTradeOverlays([]);
+    setComparison(null);
+    comparingRef.current = false;
+    dragStartRef.current = null;
+    setTooltip(prev => ({ ...prev, show: false, isDragging: false, dragPercent: null }));
     setHasRenderedChart(false);
   }, []);
 
@@ -264,7 +272,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
     setTradeOverlays(nextTradeOverlays);
   }, []);
 
-  const loadChart = useCallback(async (range: TimeRange) => {
+  const loadChart = useCallback(async (range: TimeRange, signal: AbortSignal) => {
     if (!containerRef.current) return;
 
     setLoading(true);
@@ -276,7 +284,8 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
 
     try {
       const res = await fetch(
-        `/api/stock/candles?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${now}`
+        `/api/stock/candles?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${now}`,
+        { signal },
       );
 
       if (!res.ok) throw new Error('Failed to fetch candles');
@@ -292,18 +301,21 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
 
       // Dynamic import for SSR safety
       const { createChart, ColorType, CrosshairMode, CandlestickSeries, AreaSeries, HistogramSeries, createSeriesMarkers } = await import('lightweight-charts');
+      if (signal.aborted || !containerRef.current) return;
 
       // Dispose old chart
       resetChart();
 
+      const mobileQuery = window.matchMedia('(max-width: 640px)');
       const chart = createChart(containerRef.current, {
+        autoSize: true,
         width: containerRef.current.clientWidth,
         height: height,
         layout: {
           background: { type: ColorType.Solid, color: '#111827' },
           textColor: '#94a3b8',
           fontFamily: "'Inter', sans-serif",
-          fontSize: 12,
+          fontSize: mobileQuery.matches ? 10 : 12,
         },
         grid: {
           vertLines: { color: '#1e2a3a40' },
@@ -311,13 +323,16 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
         },
         crosshair: {
           mode: CrosshairMode.Normal,
-          vertLine: { color: '#00d4aa40', width: 1, style: 2 },
-          horzLine: { color: '#00d4aa40', width: 1, style: 2 },
+          vertLine: { color: '#f5f5f540', width: 1, style: 2 },
+          horzLine: { color: '#f5f5f540', width: 1, style: 2 },
         },
         rightPriceScale: {
           borderColor: '#1e2a3a',
           scaleMargins: { top: 0.1, bottom: 0.2 },
         },
+        // Two fingers compare prices; one finger can still pan the chart.
+        handleScale: { pinch: false },
+        handleScroll: { vertTouchDrag: false },
         timeScale: {
           borderColor: '#1e2a3a',
           timeVisible: true,
@@ -332,6 +347,8 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
       candlesRef.current = candles;
 
       let unsubscribeVisibleRange: (() => void) | null = null;
+      let cleanupComparison: (() => void) | null = null;
+      let updateResponsiveLabels: (() => void) | null = null;
 
       if (candles.length > 0) {
         let mainSeries;
@@ -398,7 +415,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
 
         // Volume series
         const volumeSeries = chart.addSeries(HistogramSeries, {
-          color: '#00d4aa30',
+          color: '#f5f5f530',
           priceFormat: { type: 'volume' },
           priceScaleId: '',
         });
@@ -419,10 +436,24 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
           })
         );
 
+        updateResponsiveLabels = () => {
+          const mobile = mobileQuery.matches;
+          chart.applyOptions({ layout: { fontSize: mobile ? 10 : 12 } });
+          mainSeries.applyOptions({
+            priceFormat: mobile
+              ? { type: 'custom', minMove: 0.01, formatter: compactPrice, tickmarksFormatter: (prices: number[]) => prices.map(compactPrice) }
+              : { type: 'price', minMove: 0.01, precision: 2 },
+          });
+          volumeSeries.applyOptions({ priceFormat: { type: 'volume', precision: mobile ? 1 : 2 } });
+        };
+        updateResponsiveLabels();
+        mobileQuery.addEventListener('change', updateResponsiveLabels);
+
         // Subscribe to crosshair move
         const firstPrice = candles[0]?.open || 0;
         
         chart.subscribeCrosshairMove((param) => {
+          if (comparingRef.current) return;
           if (!param.time || !param.point || param.point.x < 0) {
             setTooltip(prev => ({ ...prev, show: false }));
             return;
@@ -456,25 +487,29 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
         unsubscribeVisibleRange = () => chart.timeScale().unsubscribeVisibleTimeRangeChange(handleVisibleRangeChange);
         chart.timeScale().fitContent();
         requestAnimationFrame(updateTradeOverlays);
+        cleanupComparison = attachChartComparison(
+          containerRef.current, chart, mainSeries, candles, setComparison,
+          active => {
+            comparingRef.current = active;
+            dragStartRef.current = null;
+            setTooltip(prev => ({ ...prev, show: false, isDragging: false, dragPercent: null }));
+          },
+        );
       }
 
-      // Handle resize
-      const handleResize = () => {
-        if (containerRef.current && chartRef.current) {
-          chartRef.current.applyOptions({ width: containerRef.current.clientWidth });
-          requestAnimationFrame(updateTradeOverlays);
-        }
-      };
-
-      window.addEventListener('resize', handleResize);
+      // Follow the container through layout transitions as well as viewport changes.
+      chart.timeScale().subscribeSizeChange(updateTradeOverlays);
       cleanupChartListenersRef.current = () => {
-        window.removeEventListener('resize', handleResize);
+        chart.timeScale().unsubscribeSizeChange(updateTradeOverlays);
+        if (updateResponsiveLabels) mobileQuery.removeEventListener('change', updateResponsiveLabels);
+        cleanupComparison?.();
         unsubscribeVisibleRange?.();
       };
 
       setHasRenderedChart(true);
       setLoading(false);
     } catch (error) {
+      if (signal.aborted) return;
       console.error('Chart load error:', error);
       resetChart();
       setNoData(true);
@@ -483,7 +518,9 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
   }, [symbol, height, chartType, syncAlertPriceLines, updateTradeOverlays, resetChart]);
 
   useEffect(() => {
-    loadChart(activeRange);
+    const controller = new AbortController();
+    loadChart(activeRange, controller.signal);
+    return () => controller.abort();
   }, [activeRange, loadChart]);
 
   useEffect(() => {
@@ -521,8 +558,8 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
     }
   }, [alertRules, markers, syncAlertPriceLines, updateTradeOverlays]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!tooltip.show) return;
+  const handleMouseDown = () => {
+    if (!tooltip.show || comparingRef.current) return;
     dragStartRef.current = { price: tooltip.price, time: tooltip.date };
     setTooltip(prev => ({ ...prev, isDragging: true }));
   };
@@ -542,17 +579,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
       {!hideToolbar && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px' }}>
           <span style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>{symbol} Chart</span>
-          <div className="time-range-group">
-            {TIME_RANGES.map((r) => (
-              <button
-                key={r.key}
-                className={`time-range-btn ${activeRange === r.key ? 'active' : ''}`}
-                onClick={() => setInternalRange(r.key)}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
+          <TimeRangeFilter value={activeRange} onChange={setInternalRange} />
         </div>
       )}
       <div style={{ position: 'relative', minHeight: height, height }}>
@@ -610,9 +637,42 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
             }}
           />
         ))}
+
+        {comparison && (
+          <div
+            className="chart-comparison"
+            style={{ width: comparison.width, height: comparison.height }}
+          >
+            <svg width={comparison.width} height={comparison.height} aria-hidden="true">
+              <rect
+                x={comparison.start.x} y={0}
+                width={Math.max(1, comparison.end.x - comparison.start.x)} height={comparison.height}
+                fill="#f5f5f5" fillOpacity={0.1}
+              />
+              {[comparison.start, comparison.end].map((point, index) => (
+                <g key={index}>
+                  <line x1={point.x} x2={point.x} y1={0} y2={comparison.height} stroke="#f5f5f5" strokeDasharray="4 3" />
+                  <circle cx={point.x} cy={point.y} r={4} fill="#f5f5f5" stroke="#111827" strokeWidth={2} />
+                </g>
+              ))}
+            </svg>
+            <div className="chart-comparison-summary" role="status">
+              <span className="chart-comparison-dates">
+                {comparisonDate.format(comparison.start.time * 1000)} → {comparisonDate.format(comparison.end.time * 1000)}
+              </span>
+              <span>{comparisonPrice.format(comparison.start.price)} → {comparisonPrice.format(comparison.end.price)}</span>
+              <strong className={comparison.change > 0 ? 'gain' : comparison.change < 0 ? 'loss' : 'neutral'}>
+                {comparison.change > 0 ? '+' : ''}{comparisonPrice.format(comparison.change)}
+                {comparison.percentChange !== null && (
+                  <> ({comparison.percentChange > 0 ? '+' : ''}{comparison.percentChange.toFixed(2)}%)</>
+                )}
+              </strong>
+            </div>
+          </div>
+        )}
         
         {/* Legend / Tooltip Overlay */}
-        {tooltip.show && (
+        {tooltip.show && !comparison && (
           <div style={{
             position: 'absolute',
             top: 12,
@@ -648,7 +708,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
                 marginTop: 4, 
                 paddingTop: 4, 
                 borderTop: '1px solid #1e2a3a',
-                color: '#00d4aa',
+                color: '#f5f5f5',
                 fontWeight: 600,
                 fontSize: 11
               }}>

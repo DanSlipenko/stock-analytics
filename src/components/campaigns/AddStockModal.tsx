@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
-import { Modal, Form, Input, InputNumber, DatePicker, Select, Space, Button, message } from "antd";
+import { Modal, Form, Input, InputNumber, DatePicker, Select, Segmented, Space, Button, message } from "antd";
 import SymbolSearch from "../shared/SymbolSearch";
 import { Campaign, CampaignStock } from "@/types";
 import { useStore } from "@/context/StoreContext";
@@ -19,6 +19,7 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
   const { state, dispatch } = useStore();
   const [loading, setLoading] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState("");
+  const [assetType, setAssetType] = useState<"stock" | "crypto">("stock");
   const isAddingToExistingStock = Boolean(stock);
 
   const assetChoices = useMemo(
@@ -36,6 +37,7 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
     if (!open) {
       form.resetFields();
       setSelectedSymbol("");
+      setAssetType("stock");
     }
   }, [form, open, stock, campaign.moneyLocations]);
 
@@ -102,12 +104,34 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
           <Form.Item label="Symbol">
             <Input value={stock.symbol} disabled size="large" />
           </Form.Item>
-        : <Form.Item label="Symbol" required>
-            <SymbolSearch
-              onSelect={(symbol) => setSelectedSymbol(symbol)}
-              placeholder="Search for a stock or crypto (e.g. AAPL, BINANCE:BTCUSDT)..."
-            />
-          </Form.Item>
+        : <>
+            <Form.Item label="Type">
+              <Segmented
+                block
+                value={assetType}
+                onChange={(value) => {
+                  setAssetType(value as "stock" | "crypto");
+                  setSelectedSymbol("");
+                }}
+                options={[
+                  { label: "Stock", value: "stock" },
+                  { label: "Crypto", value: "crypto" },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item label="Symbol" required>
+              <SymbolSearch
+                key={assetType}
+                assetType={assetType}
+                onSelect={(symbol) => setSelectedSymbol(symbol)}
+                placeholder={
+                  assetType === "crypto"
+                    ? "Search for a crypto (e.g. BTC, ETH, ZEC)..."
+                    : "Search for a stock (e.g. AAPL, MSFT, NVDA)..."
+                }
+              />
+            </Form.Item>
+          </>
         }
 
         <Form.Item name="shares" label="Number of Shares" rules={[{ required: true, message: "Enter number of shares" }]}>

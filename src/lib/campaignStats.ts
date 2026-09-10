@@ -1,4 +1,5 @@
 import { Campaign } from "@/types";
+import { getRemainingShares } from "@/lib/shares";
 
 type QuoteMap = Record<string, { currentPrice?: number } | undefined>;
 type PriceMap = Record<string, number | undefined>;
@@ -7,6 +8,8 @@ export interface CampaignStats {
   invested: number;
   currentValue: number;
   realized: number;
+  /** Total capital deployed, including shares that have since been sold. */
+  costBasis: number;
   pnl: number;
   pnlPercent: number;
 }
@@ -23,22 +26,17 @@ export type AnnualPnLStats = {
   basis: number;
 };
 
-const getSoldShares = (stock: Campaign["stocks"][number]) =>
-  stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
-
-const getRemainingShares = (stock: Campaign["stocks"][number]) => Math.max(stock.shares - getSoldShares(stock), 0);
-
 const isInCurrentYear = (dateStr: string) => new Date(dateStr).getFullYear() === new Date().getFullYear();
 
 export function calculateCampaignStats(campaign: Campaign, quotes: QuoteMap = {}): CampaignStats {
   let invested = 0;
   let currentValue = 0;
   let realized = 0;
+  let costBasis = 0;
   let pnl = 0;
 
   campaign.stocks.forEach((stock) => {
-    const soldShares = stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
-    const remainingShares = stock.shares - soldShares;
+    const remainingShares = getRemainingShares(stock);
     const currentPrice = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
 
     const unrealizedStock = remainingShares * (currentPrice - stock.buyPrice);
@@ -50,13 +48,14 @@ export function calculateCampaignStats(campaign: Campaign, quotes: QuoteMap = {}
     invested += remainingShares * stock.buyPrice;
     currentValue += remainingShares * currentPrice;
     realized += realizedStock;
+    // Cost of every share bought, so selling doesn't shrink the denominator.
+    costBasis += stock.shares * stock.buyPrice;
     pnl += unrealizedStock + realizedStock;
   });
 
-  const pnlBasis = invested + Math.abs(realized);
-  const pnlPercent = invested > 0 ? (pnl / pnlBasis) * 100 : 0;
+  const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
 
-  return { invested, currentValue, realized, pnl, pnlPercent };
+  return { invested, currentValue, realized, costBasis, pnl, pnlPercent };
 }
 
 export function calculateCampaignMonthlyChange(

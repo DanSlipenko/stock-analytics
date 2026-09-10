@@ -14,7 +14,8 @@ import { useRouter, useParams } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
 import { usePeriodPrices } from "@/hooks/usePeriodPrices";
-import StockChart, { ChartAlertRule, TimeRange, TIME_RANGES } from "@/components/charts/StockChart";
+import StockChart, { ChartAlertRule, TimeRange } from "@/components/charts/StockChart";
+import TimeRangeFilter from "@/components/charts/TimeRangeFilter";
 import StockDetailDrawer from "@/components/charts/StockDetailDrawer";
 import PnLDisplay from "@/components/shared/PnLDisplay";
 import { cn } from "@/lib/utils";
@@ -519,16 +520,7 @@ export default function AssetDetailPage() {
 
       {showChartTimeRange && (
         <div className="stocks-time-range-bar">
-          <div className="time-range-group">
-            {TIME_RANGES.map((r) => (
-              <button
-                key={r.key}
-                className={`time-range-btn ${globalTimeRange === r.key ? "active" : ""}`}
-                onClick={() => setGlobalTimeRange(r.key)}>
-                {r.label}
-              </button>
-            ))}
-          </div>
+          <TimeRangeFilter value={globalTimeRange} onChange={setGlobalTimeRange} />
         </div>
       )}
 

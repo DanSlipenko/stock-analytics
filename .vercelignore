@@ -1,0 +1,6 @@
+.env
+.env*
+*.bak
+node_modules
+.next
+.git

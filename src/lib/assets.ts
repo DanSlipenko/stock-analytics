@@ -1,5 +1,6 @@
 import { Campaign, CampaignStock, MoneyLocation, StockQuote } from "@/types";
 import { calculateCampaignStats, calculateCampaignAnnualPnL } from "@/lib/campaignStats";
+import { getSoldShares, getRemainingShares } from "@/lib/shares";
 
 export type LastDayMovement = {
   value: number;
@@ -180,12 +181,7 @@ export const annualForStocks = (
 
 // ---- Per-stock helpers ----
 
-export const getSoldShares = (stock: CampaignStock) =>
-  stock.transactions.reduce((sum, transaction) => sum + transaction.shares, 0);
-
-export const getRemainingShares = (stock: CampaignStock) => Math.max(stock.shares - getSoldShares(stock), 0);
-
-export const isSoldOut = (stock: CampaignStock) => getRemainingShares(stock) <= 0;
+export { getSoldShares, getRemainingShares, isSoldOut } from "@/lib/shares";
 
 export const getRealizedPnL = (stock: CampaignStock) =>
   stock.transactions.reduce((sum, transaction) => sum + transaction.shares * (transaction.price - stock.buyPrice), 0);

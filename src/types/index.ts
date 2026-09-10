@@ -44,6 +44,8 @@ export interface Campaign {
   _id?: string;
   name: string;
   startDate: string;
+  /** Manually finished by the user; sorts and styles with the inactive campaigns. */
+  closed?: boolean;
   moneyLocations: MoneyLocation[];
   stocks: CampaignStock[];
   createdAt?: string;

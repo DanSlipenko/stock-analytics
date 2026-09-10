@@ -5,6 +5,7 @@ import { Modal, Form, InputNumber, Slider, Space, Button, Statistic, Card, Row, 
 import { CampaignStock, Campaign } from '@/types';
 import { useStore } from '@/context/StoreContext';
 import { useStockQuote } from '@/hooks/useStockQuote';
+import { formatShares, getRemainingShares, isSoldOut, sharesForPercent } from '@/lib/shares';
 import dayjs from 'dayjs';
 
 interface SellStockModalProps {
@@ -58,15 +59,12 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
   }, [open, stock, quote?.currentPrice, form]);
 
   // Calculate remaining shares after previous sells
-  const remainingShares = useMemo(() => {
-    if (!stock) return 0;
-    const soldShares = stock.transactions.reduce((sum, t) => sum + t.shares, 0);
-    return stock.shares - soldShares;
-  }, [stock]);
+  const remainingShares = useMemo(() => (stock ? getRemainingShares(stock) : 0), [stock]);
 
-  const sharesToSell = useMemo(() => {
-    return Math.round((remainingShares * sellPercent) / 100 * 10000) / 10000;
-  }, [remainingShares, sellPercent]);
+  const sharesToSell = useMemo(
+    () => sharesForPercent(remainingShares, sellPercent),
+    [remainingShares, sellPercent]
+  );
 
   const sellPrice = Form.useWatch('sellPrice', form) || quote?.currentPrice || 0;
 
@@ -90,9 +88,16 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
         percentSold: sellPercent,
       };
 
+      let clearedNotifications = false;
       const updatedStocks = campaign.stocks.map((s) => {
         if (s._id === stock._id) {
-          return { ...s, transactions: [...s.transactions, transaction] };
+          const nextTransactions = [...s.transactions, transaction];
+          const soldOut = isSoldOut({ ...s, transactions: nextTransactions });
+          if (soldOut && (s.notifications?.length ?? 0) > 0) {
+            clearedNotifications = true;
+            return { ...s, transactions: nextTransactions, notifications: [] };
+          }
+          return { ...s, transactions: nextTransactions };
         }
         return s;
       });
@@ -109,7 +114,11 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
         form.resetFields();
         setSellPercent(100);
         onClose();
-        message.success(`Sold ${sharesToSell} shares of ${stock.symbol}`);
+        message.success(
+          clearedNotifications
+            ? `Sold ${formatShares(sharesToSell)} shares of ${stock.symbol} — price alerts cleared`
+            : `Sold ${formatShares(sharesToSell)} shares of ${stock.symbol}`,
+        );
       }
     } catch (e) {
       console.error('Sell stock error:', e);
@@ -137,7 +146,7 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
           <Col span={8}>
             <Statistic
               title={<span style={{ color: '#64748b', fontSize: 11 }}>Available</span>}
-              value={remainingShares}
+              value={formatShares(remainingShares)}
               suffix="shares"
               valueStyle={{ fontSize: 16, color: '#e2e8f0' }}
             />
@@ -157,14 +166,14 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
               value={quote?.currentPrice || 0}
               prefix="$"
               precision={2}
-              valueStyle={{ fontSize: 16, color: '#00d4aa' }}
+              valueStyle={{ fontSize: 16, color: '#f5f5f5' }}
             />
           </Col>
         </Row>
       </Card>
 
       <Form form={form} layout="vertical">
-        <Form.Item label={`Sell Percentage — ${sellPercent}% (${sharesToSell} shares)`}>
+        <Form.Item label={`Sell Percentage — ${sellPercent}% (${formatShares(sharesToSell)} shares)`}>
           <Slider
             value={sellPercent}
             onChange={(v) => setSellPercent(v)}
@@ -223,7 +232,7 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
             loading={loading}
             danger={projectedGain < 0}
           >
-            Sell {sharesToSell} Shares
+            Sell {formatShares(sharesToSell)} Shares
           </Button>
         </Space>
       </Form>

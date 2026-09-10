@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
 
+/**
+ * Upstream cache policy for one request.
+ *
+ * The header comes from the app's manual reload button: the user explicitly
+ * asked for fresh numbers, so bypass the revalidate window rather than handing
+ * back a response that may be up to `revalidate` seconds old.
+ */
+function upstreamCache(request: NextRequest, revalidate: number): RequestInit {
+  return request.headers.get('x-refresh') === '1'
+    ? { cache: 'no-store' }
+    : { next: { revalidate } };
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get('symbol');
@@ -12,6 +25,8 @@ export async function GET(request: NextRequest) {
   if (!symbol) {
     return NextResponse.json({ error: 'Symbol is required' }, { status: 400 });
   }
+
+  const cacheInit = upstreamCache(request, 60);
 
   const now = Math.floor(Date.now() / 1000);
   const fromTs = from || String(now - 365 * 24 * 60 * 60); // default 1 year
@@ -33,7 +48,7 @@ export async function GET(request: NextRequest) {
     try {
       const res = await fetch(
         `https://api.binance.us/api/v3/klines?symbol=${cryptoSymbol}&interval=${interval}&startTime=${Number(fromTs) * 1000}&endTime=${Number(toTs) * 1000}&limit=1000`,
-        { next: { revalidate: 60 } }
+        cacheInit
       );
       if (res.ok) {
         const data = await res.json();
@@ -88,9 +103,9 @@ export async function GET(request: NextRequest) {
 
     const res = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${fromTs}&period2=${toTs}&interval=${yhInterval}`,
-      { 
+      {
         headers: { 'User-Agent': 'Mozilla/5.0' },
-        next: { revalidate: 60 } 
+        ...cacheInit,
       }
     );
 

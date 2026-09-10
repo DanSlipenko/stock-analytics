@@ -4,7 +4,6 @@ import React, { useState, useMemo } from "react";
 import {
   Card,
   Button,
-  Table,
   Tag,
   Empty,
   Spin,
@@ -24,9 +23,11 @@ import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
 import SymbolSearch from "@/components/shared/SymbolSearch";
 import StockDetailDrawer from "@/components/charts/StockDetailDrawer";
-import StockChart, { ChartAlertRule, TimeRange, TIME_RANGES } from "@/components/charts/StockChart";
+import StockChart, { ChartAlertRule, TimeRange } from "@/components/charts/StockChart";
+import TimeRangeFilter from "@/components/charts/TimeRangeFilter";
 import PnLDisplay from "@/components/shared/PnLDisplay";
 import { WatchlistItem } from "@/types";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const hasValidQuote = (quote?: { currentPrice: number }): quote is { currentPrice: number } =>
   Boolean(quote && Number.isFinite(quote.currentPrice) && quote.currentPrice > 0);
@@ -91,60 +92,6 @@ export default function WatchlistPage() {
       </div>
     );
 
-  const columns = [
-    {
-      title: "Symbol",
-      dataIndex: "symbol",
-      key: "symbol",
-      render: (s: string) => (
-        <Button type="link" style={{ fontWeight: 700, padding: 0 }} onClick={() => setDrawerSymbol(s)}>
-          {s}
-        </Button>
-      ),
-    },
-    {
-      title: "Current Price",
-      key: "current",
-      render: (_: unknown, record: { symbol: string }) => {
-        const q = quotes[record.symbol];
-        return hasValidQuote(q) ? `$${q.currentPrice.toFixed(2)}` : "—";
-      },
-      align: "right" as const,
-    },
-    {
-      title: "Target Buy",
-      dataIndex: "targetBuyPrice",
-      key: "target",
-      render: (v: number) => <span style={{ color: "#00d4aa", fontWeight: 600 }}>${v.toFixed(2)}</span>,
-      align: "right" as const,
-    },
-    {
-      title: "Distance",
-      key: "distance",
-      render: (_: unknown, record: { symbol: string; targetBuyPrice: number }) => {
-        const q = quotes[record.symbol];
-        if (!hasValidQuote(q)) return "—";
-        const dist = ((q.currentPrice - record.targetBuyPrice) / q.currentPrice) * 100;
-        const atTarget = q.currentPrice <= record.targetBuyPrice;
-        return atTarget ?
-            <Tag color="green">🎯 At Target!</Tag>
-          : <PnLDisplay value={-dist} percentage={-dist} showArrow={false} size="small" prefix="" />;
-      },
-      align: "right" as const,
-    },
-    { title: "Notes", dataIndex: "notes", key: "notes", render: (n: string) => <span style={{ color: "#94a3b8" }}>{n || "—"}</span> },
-    {
-      title: "",
-      key: "actions",
-      width: 100,
-      render: (_: unknown, record: { _id?: string }) => (
-        <Popconfirm title="Remove from watchlist?" onConfirm={() => handleDelete(record._id!)}>
-          <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-        </Popconfirm>
-      ),
-    },
-  ];
-
   return (
     <div className="page-container">
       <div className="page-header">
@@ -163,22 +110,14 @@ export default function WatchlistPage() {
           </Button>
         </div>
       : <Card
+          className="data-table-card"
           bordered={false}
           title={
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 16 }}>
               <span style={{ color: "#e2e8f0", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 Stocks
                 {viewMode !== "list" && (
-                  <div className="time-range-group">
-                    {TIME_RANGES.map((r) => (
-                      <button
-                        key={r.key}
-                        className={`time-range-btn ${globalTimeRange === r.key ? "active" : ""}`}
-                        onClick={() => setGlobalTimeRange(r.key)}>
-                        {r.label}
-                      </button>
-                    ))}
-                  </div>
+                  <TimeRangeFilter value={globalTimeRange} onChange={setGlobalTimeRange} />
                 )}
               </span>
               <Segmented
@@ -193,15 +132,53 @@ export default function WatchlistPage() {
             </div>
           }>
           {viewMode === "list" ?
-            <Table
-              dataSource={state.watchlist.map((w) => ({ ...w, key: w._id }))}
-              columns={columns}
-              pagination={false}
-              rowClassName={(record) => {
-                const q = quotes[record.symbol];
-                return hasValidQuote(q) && q.currentPrice <= record.targetBuyPrice ? "gain" : "";
-              }}
-            />
+            <Table aria-label="Watchlist stocks" className="min-w-[800px] tabular-nums">
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">Symbol</TableHead>
+                  <TableHead scope="col" className="text-right">Current Price</TableHead>
+                  <TableHead scope="col" className="text-right">Target Buy</TableHead>
+                  <TableHead scope="col" className="text-right">Distance</TableHead>
+                  <TableHead scope="col">Notes</TableHead>
+                  <TableHead scope="col" className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {state.watchlist.map(item => {
+                  const quote = quotes[item.symbol];
+                  const validQuote = hasValidQuote(quote);
+                  const atTarget = validQuote && quote.currentPrice <= item.targetBuyPrice;
+                  const distance = validQuote ? ((quote.currentPrice - item.targetBuyPrice) / quote.currentPrice) * 100 : null;
+
+                  return (
+                    <TableRow key={item._id ?? item.symbol} className={atTarget ? "gain bg-green-500/5" : undefined}>
+                      <TableCell>
+                        <Button type="link" style={{ fontWeight: 700, padding: 0 }} onClick={() => setDrawerSymbol(item.symbol)}>
+                          {item.symbol}
+                        </Button>
+                      </TableCell>
+                      <TableCell className="text-right">{validQuote ? `$${quote.currentPrice.toFixed(2)}` : "—"}</TableCell>
+                      <TableCell className="text-right font-semibold text-foreground">${item.targetBuyPrice.toFixed(2)}</TableCell>
+                      <TableCell className="text-right">
+                        {atTarget ? <Tag color="green">🎯 At Target!</Tag>
+                          : distance !== null ? <PnLDisplay value={-distance} percentage={-distance} showArrow={false} size="small" prefix="" />
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="min-w-52 max-w-80 whitespace-pre-wrap break-words text-muted-foreground">{item.notes || "—"}</TableCell>
+                      <TableCell className="text-right">
+                        <Popconfirm title="Remove from watchlist?" onConfirm={() => item._id && handleDelete(item._id)}>
+                          <Button
+                            type="text" danger icon={<DeleteOutlined />} size="small"
+                            aria-label={`Remove ${item.symbol} from watchlist`}
+                            style={{ width: 36, height: 36 }}
+                          />
+                        </Popconfirm>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           : <Row gutter={[24, 24]}>
               {state.watchlist.map((item: WatchlistItem) => {
                 const q = quotes[item.symbol];
