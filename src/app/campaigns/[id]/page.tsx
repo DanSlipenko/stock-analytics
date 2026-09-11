@@ -52,7 +52,7 @@ import MetaLine from "@/components/shared/MetaLine";
 import PnLDisplay from "@/components/shared/PnLDisplay";
 import { calculateCampaignStats, calculateCampaignAnnualPnL } from "@/lib/campaignStats";
 import { getCampaignMetaParts, pluralize } from "@/lib/campaignFormat";
-import { getSoldShares, getRemainingShares, isSoldOut } from "@/lib/shares";
+import { getSoldShares, getRemainingShares, isSoldOut, getCostPerShare, getSaleRealizedPnL } from "@/lib/shares";
 import { cn } from "@/lib/utils";
 
 type LocationStats = {
@@ -89,12 +89,12 @@ const formatNotification = (notification: StockNotification) => {
 };
 
 const getRealizedPnL = (stock: CampaignStock) =>
-  stock.transactions.reduce((sum, transaction) => sum + transaction.shares * (transaction.price - stock.buyPrice), 0);
+  stock.transactions.reduce((sum, transaction) => sum + getSaleRealizedPnL(stock, transaction), 0);
 
 const getRealizedPnLPercent = (stock: CampaignStock) => {
   const sold = getSoldShares(stock);
   if (sold <= 0) return 0;
-  const costBasis = sold * stock.buyPrice;
+  const costBasis = sold * getCostPerShare(stock);
   return costBasis > 0 ? (getRealizedPnL(stock) / costBasis) * 100 : 0;
 };
 
@@ -652,8 +652,9 @@ export default function CampaignDetailPage() {
         if (quotesPending) return <QuoteCellSkeleton width={88} />;
 
         const curPrice = quotes[record.symbol]?.currentPrice || record.buyPrice;
-        const pnl = remaining * (curPrice - record.buyPrice);
-        const pnlPct = ((curPrice - record.buyPrice) / record.buyPrice) * 100;
+        const costPerShare = getCostPerShare(record);
+        const pnl = remaining * (curPrice - costPerShare);
+        const pnlPct = ((curPrice - costPerShare) / costPerShare) * 100;
         return <PnLDisplay value={pnl} percentage={pnlPct} size="small" />;
       },
       align: "right" as const,
@@ -720,12 +721,13 @@ export default function CampaignDetailPage() {
               { title: "Date", dataIndex: "date", render: (d: string) => new Date(d).toLocaleDateString() },
               { title: "Shares Sold", dataIndex: "shares", render: (v: number) => v.toLocaleString() },
               { title: "Sell Price", dataIndex: "price", render: (v: number) => `$${v.toFixed(2)}` },
+              { title: "Fee", dataIndex: "fee", render: (v?: number) => (v ? formatCurrency(v) : "—") },
               { title: "% Sold", dataIndex: "percentSold", render: (v: number) => `${v}%` },
               {
                 title: "Realized P&L",
                 key: "pnl",
-                render: (_: unknown, t: { shares: number; price: number }) => {
-                  const pnl = t.shares * (t.price - record.buyPrice);
+                render: (_: unknown, t: { shares: number; price: number; fee?: number }) => {
+                  const pnl = getSaleRealizedPnL(record, t);
                   return <PnLDisplay value={pnl} size="small" />;
                 },
               },
@@ -764,8 +766,9 @@ export default function CampaignDetailPage() {
         const remaining = getRemainingShares(stock);
         const currentPrice = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
         const currentValue = remaining * currentPrice;
-        const unrealized = remaining * (currentPrice - stock.buyPrice);
-        const unrealizedPct = ((currentPrice - stock.buyPrice) / stock.buyPrice) * 100;
+        const costPerShare = getCostPerShare(stock);
+        const unrealized = remaining * (currentPrice - costPerShare);
+        const unrealizedPct = ((currentPrice - costPerShare) / costPerShare) * 100;
         const lastDayMovement = getDisplayLastDayMovement(stock, quotes[stock.symbol]);
         const realized = getRealizedPnL(stock);
         const realizedPct = getRealizedPnLPercent(stock);
@@ -930,7 +933,7 @@ export default function CampaignDetailPage() {
   // The range scopes the performance chart too, so it stays up in list view.
   const showChartTimeRange = campaign.stocks.length > 0;
 
-  const realizedBasis = campaign.stocks.reduce((sum, stock) => sum + getSoldShares(stock) * stock.buyPrice, 0);
+  const realizedBasis = campaign.stocks.reduce((sum, stock) => sum + getSoldShares(stock) * getCostPerShare(stock), 0);
 
   // Ordered by time horizon, shortest first; realized gains close the row.
   const summaryMetrics: SummaryMetric[] = [
@@ -963,8 +966,9 @@ export default function CampaignDetailPage() {
     const remaining = getRemainingShares(stock);
     const lastDayMovement = getDisplayLastDayMovement(stock, quote);
     const priceForPnl = currentPrice ?? stock.buyPrice;
-    const unrealized = remaining * (priceForPnl - stock.buyPrice);
-    const unrealizedPct = ((priceForPnl - stock.buyPrice) / stock.buyPrice) * 100;
+    const costPerShare = getCostPerShare(stock);
+    const unrealized = remaining * (priceForPnl - costPerShare);
+    const unrealizedPct = ((priceForPnl - costPerShare) / costPerShare) * 100;
     const realized = getRealizedPnL(stock);
     const realizedPct = getRealizedPnLPercent(stock);
     const soldPrice = getAverageSoldPrice(stock);

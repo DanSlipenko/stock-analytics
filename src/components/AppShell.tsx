@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { Layout, Menu, Drawer, Button } from "antd";
 import { DashboardOutlined, FolderOutlined, EyeOutlined, BellOutlined, WalletOutlined, MenuOutlined } from "@ant-design/icons";
 import { usePathname, useRouter } from "next/navigation";
@@ -96,7 +97,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            borderBottom: "1px solid #1e2a3a",
             position: "sticky",
             top: 0,
             zIndex: 50,
@@ -125,12 +125,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Drawer
         className="mobile-nav-drawer"
         placement="left"
-        size={260}
+        size={288}
         open={mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}
+        closable={{ placement: "end" }}
         styles={{
-          body: { padding: 0, background: "#0f1629" },
-          header: { background: "#0f1629", borderBottom: "1px solid #1e2a3a" },
+          header: { background: "#0f1629", borderBottom: "none", paddingInline: "20px 16px" },
+          body: { padding: "4px 12px calc(16px + env(safe-area-inset-bottom, 0px))", background: "#0f1629" },
         }}
         title={
           <div className="mobile-header-brand" style={{ display: "flex" }}>
@@ -138,14 +139,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="sidebar-brand-text">Finances</span>
           </div>
         }>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          style={{ borderRight: 0 }}
-        />
+        {/* Links rather than antd's Menu: this is site navigation, not a menu of commands. */}
+        <nav aria-label="Primary">
+          <ul className="mobile-nav-list">
+            {menuItems.map((item) => (
+              <li key={item.key}>
+                <Link
+                  href={item.key}
+                  className="mobile-nav-item"
+                  aria-current={item.key === selectedKey ? "page" : undefined}
+                  onClick={() => setMobileNavOpen(false)}>
+                  {item.icon}
+                  <span>{item.label}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
       </Drawer>
     </Layout>
   );

@@ -14,6 +14,8 @@ export interface Transaction {
   type: 'sell';
   shares: number;
   price: number;
+  /** Total fee charged on this sale, in dollars (e.g. Kraken/PayPal). */
+  fee?: number;
   date: string;
   percentSold: number;
 }
@@ -32,6 +34,8 @@ export interface CampaignStock {
   symbol: string;
   shares: number;
   buyPrice: number;
+  /** Total fee charged on the purchase, in dollars. Added to the lot's cost basis. */
+  buyFee?: number;
   buyDate: string;
   locationId: string;
   isStarred?: boolean;

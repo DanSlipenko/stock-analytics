@@ -1,11 +1,12 @@
-import type { IChartApi, ISeriesApi, Logical } from 'lightweight-charts';
-import type { StockCandle } from '@/types';
+import type { IChartApi, ISeriesApi, Logical, SeriesType } from 'lightweight-charts';
 
 type ComparisonPoint = {
   x: number;
   y: number;
   time: number;
   price: number;
+  /** Position in the points the comparison was attached with. */
+  index: number;
 };
 
 export type ChartComparison = {
@@ -19,11 +20,13 @@ export type ChartComparison = {
 
 // Capture two touches before the chart can interpret them as scrolling or zooming.
 // Single-finger events and touchend still reach the chart to preserve its tracking lifecycle.
-export function attachChartComparison(
+// `points` must be the series' data in order, one per bar; `valueOf` reads the plotted value.
+export function attachChartComparison<T extends { time: number }>(
   container: HTMLDivElement,
   chart: IChartApi,
-  series: ISeriesApi<'Area'> | ISeriesApi<'Candlestick'>,
-  candles: StockCandle[],
+  series: ISeriesApi<SeriesType>,
+  points: readonly T[],
+  valueOf: (point: T) => number,
   onChange: (comparison: ChartComparison | null) => void,
   onActiveChange: (active: boolean) => void,
 ) {
@@ -49,19 +52,20 @@ export function attachChartComparison(
         || touch.clientY < bounds.top || touch.clientY >= bounds.top + height
       ))) return;
 
-      const points = touches.map(touch => {
+      const picked = touches.map(touch => {
         const x = Math.max(0, Math.min(width - 1, touch.clientX - bounds.left));
         const logical = chart.timeScale().coordinateToLogical(x);
         if (logical === null) return null;
-        const index = Math.max(0, Math.min(candles.length - 1, Math.round(logical)));
-        const candle = candles[index];
-        if (!candle || !Number.isFinite(candle.close)) return null;
-        const y = series.priceToCoordinate(candle.close);
+        const index = Math.max(0, Math.min(points.length - 1, Math.round(logical)));
+        const point = points[index];
+        const value = point ? valueOf(point) : NaN;
+        if (!Number.isFinite(value)) return null;
+        const y = series.priceToCoordinate(value);
         const snappedX = chart.timeScale().logicalToCoordinate(index as Logical);
         if (y === null || snappedX === null) return null;
-        return { x: snappedX, y, time: candle.time, price: candle.close };
+        return { x: snappedX, y, time: point.time, price: value, index };
       });
-      const [first, second] = points;
+      const [first, second] = picked;
       if (!first || !second) return;
 
       if (!comparing) {

@@ -5,7 +5,7 @@ import { Modal, Form, InputNumber, Slider, Space, Button, Statistic, Card, Row, 
 import { CampaignStock, Campaign } from '@/types';
 import { useStore } from '@/context/StoreContext';
 import { useStockQuote } from '@/hooks/useStockQuote';
-import { formatShares, getRemainingShares, isSoldOut, sharesForPercent } from '@/lib/shares';
+import { formatShares, getRemainingShares, getSaleRealizedPnL, isSoldOut, sharesForPercent } from '@/lib/shares';
 import dayjs from 'dayjs';
 
 interface SellStockModalProps {
@@ -67,11 +67,12 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
   );
 
   const sellPrice = Form.useWatch('sellPrice', form) || quote?.currentPrice || 0;
+  const fee = Form.useWatch('fee', form) || 0;
 
   const projectedGain = useMemo(() => {
     if (!stock) return 0;
-    return sharesToSell * (sellPrice - stock.buyPrice);
-  }, [stock, sharesToSell, sellPrice]);
+    return getSaleRealizedPnL(stock, { shares: sharesToSell, price: sellPrice, fee });
+  }, [stock, sharesToSell, sellPrice, fee]);
 
   const handleSubmit = async () => {
     if (!stock) return;
@@ -84,6 +85,7 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
         type: 'sell' as const,
         shares: sharesToSell,
         price: values.sellPrice,
+        fee: values.fee || 0,
         date: values.sellDate ? values.sellDate.toISOString() : new Date().toISOString(),
         percentSold: sellPercent,
       };
@@ -196,6 +198,10 @@ export default function SellStockModal({ open, onClose, campaign, stock }: SellS
             min={0}
             step={0.01}
           />
+        </Form.Item>
+
+        <Form.Item name="fee" label="Fee (optional)" tooltip="Total fee charged for this sale, e.g. by Kraken or PayPal">
+          <InputNumber style={{ width: '100%' }} size="large" prefix="$" min={0} step={0.01} placeholder="0.00" />
         </Form.Item>
 
         <Form.Item name="sellDate" label="Sell Date" rules={[{ required: true, message: 'Select sell date' }]}>

@@ -1,4 +1,4 @@
-import { CampaignStock } from "@/types";
+import { CampaignStock, Transaction } from "@/types";
 
 /**
  * Share quantities are floats, and crypto lots carry up to 8 decimals, so the
@@ -43,6 +43,19 @@ export function sharesForPercent(remaining: number, percent: number): number {
   const factor = 10 ** SHARE_DECIMALS;
   return Math.min(Math.round(((remaining * percent) / 100) * factor) / factor, remaining);
 }
+
+type LotCost = Pick<CampaignStock, "shares" | "buyPrice" | "buyFee">;
+
+/**
+ * Cost basis per share: the buy price plus the buy fee spread across the lot.
+ * Every P&L figure uses this rather than `buyPrice`, so fees show up as cost.
+ */
+export const getCostPerShare = (stock: LotCost) =>
+  stock.shares > 0 ? stock.buyPrice + (stock.buyFee ?? 0) / stock.shares : stock.buyPrice;
+
+/** Realized P&L of one sale: proceeds net of the sale fee, minus the cost basis of the shares sold. */
+export const getSaleRealizedPnL = (stock: LotCost, sale: Pick<Transaction, "shares" | "price" | "fee">) =>
+  sale.shares * (sale.price - getCostPerShare(stock)) - (sale.fee ?? 0);
 
 /** Display form: up to 8 decimals, so float noise never renders as 3.2e-5. */
 export const formatShares = (shares: number) =>

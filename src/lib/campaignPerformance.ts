@@ -17,7 +17,7 @@
  */
 
 import { Campaign, CampaignStock } from "@/types";
-import { snapRemaining } from "@/lib/shares";
+import { getCostPerShare, getSaleRealizedPnL, snapRemaining } from "@/lib/shares";
 import { TIME_RANGES, type TimeRange } from "@/components/charts/timeRanges";
 
 const DAY_MS = 86_400_000;
@@ -97,7 +97,7 @@ export type PerformanceSummary = {
 type Lot = {
   stock: CampaignStock;
   buyDay: string;
-  sells: { day: string; shares: number; price: number }[];
+  sells: { day: string; shares: number; price: number; fee?: number }[];
   /** Day the lot's last share was sold; null while any share is held. */
   soldOutDay: string | null;
 };
@@ -126,7 +126,7 @@ function toLots(campaign: Campaign): Lot[] {
     const sells = stock.transactions
       .flatMap((transaction) => {
         const day = toDayKey(transaction.date);
-        return day ? [{ day, shares: transaction.shares, price: transaction.price }] : [];
+        return day ? [{ day, shares: transaction.shares, price: transaction.price, fee: transaction.fee }] : [];
       })
       .sort((a, b) => a.day.localeCompare(b.day));
 
@@ -242,23 +242,24 @@ export function buildPerformanceSeries(
       if (lot.buyDay > day) continue;
 
       const { stock } = lot;
+      const costPerShare = getCostPerShare(stock);
       let sold = 0;
       let realized = 0;
       for (const sell of lot.sells) {
         if (sell.day > day) break;
         sold += sell.shares;
-        realized += sell.shares * (sell.price - stock.buyPrice);
+        realized += getSaleRealizedPnL(stock, sell);
       }
 
       const held = snapRemaining(stock.shares, sold);
       const quoted = live ? quotes[stock.symbol]?.currentPrice : undefined;
       const price = isFiniteNumber(quoted) ? quoted : (lastClose.get(stock.symbol) ?? stock.buyPrice);
 
-      pnl += realized + held * (price - stock.buyPrice);
+      pnl += realized + held * (price - costPerShare);
       value += held * price;
-      invested += held * stock.buyPrice;
+      invested += held * costPerShare;
       // Every share bought, so a sale doesn't shrink the denominator.
-      costBasis += stock.shares * stock.buyPrice;
+      costBasis += stock.shares * costPerShare;
     }
 
     return { day, time: Math.floor(dayKeyToMs(day) / 1000), pnl, value, invested, costBasis };

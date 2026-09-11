@@ -7,7 +7,7 @@ import PriceAlert from '@/models/PriceAlert';
 import WatchlistItem from '@/models/WatchlistItem';
 import { calculateCampaignStats } from '@/lib/campaignStats';
 import { getQuote, getQuotes } from '@/lib/quotes';
-import { sharesForPercent } from '@/lib/shares';
+import { getCostPerShare, getSaleRealizedPnL, sharesForPercent } from '@/lib/shares';
 import {
   getRemainingShares,
   isSoldOut,
@@ -78,6 +78,7 @@ function describeHolding(stock: CampaignStock, campaign: Campaign, currentPrice?
   const remaining = getRemainingShares(stock);
   const location = campaign.moneyLocations.find((l) => l._id === stock.locationId);
   const price = currentPrice ?? stock.buyPrice;
+  const costPerShare = getCostPerShare(stock);
 
   return {
     holdingId: stock._id,
@@ -85,20 +86,25 @@ function describeHolding(stock: CampaignStock, campaign: Campaign, currentPrice?
     sharesBought: stock.shares,
     sharesRemaining: remaining,
     buyPrice: stock.buyPrice,
+    buyFee: stock.buyFee ?? 0,
+    costPerShare: Math.round(costPerShare * 1e6) / 1e6,
     buyDate: stock.buyDate,
     asset: location ? institutionOf(location) : null,
     currentPrice: currentPrice ?? null,
     marketValue: currentPrice != null ? round2(remaining * currentPrice) : null,
-    unrealizedPnL: round2(remaining * (price - stock.buyPrice)),
+    unrealizedPnL: round2(remaining * (price - costPerShare)),
     realizedPnL: round2(getRealizedPnL(stock)),
     soldOut: remaining <= 0,
     isStarred: Boolean(stock.isStarred),
     prepareToSell: Boolean(stock.prepareToSell),
-    transactions: stock.transactions.map((t) => ({
+    sales: stock.transactions.map((t) => ({
+      saleId: t._id,
       date: t.date,
       shares: t.shares,
       price: t.price,
+      fee: t.fee ?? 0,
       percentSold: t.percentSold,
+      realizedPnL: round2(getSaleRealizedPnL(stock, t)),
     })),
     priceAlerts: (stock.notifications || []).map((n) => ({
       direction: n.type,
@@ -225,7 +231,7 @@ export function registerPortfolioTools(server: McpServer) {
           const price = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
           const entry = bySymbol.get(stock.symbol) ?? { shares: 0, cost: 0, value: 0, realized: 0 };
           entry.shares += remaining;
-          entry.cost += remaining * stock.buyPrice;
+          entry.cost += remaining * getCostPerShare(stock);
           entry.value += remaining * price;
           entry.realized += getRealizedPnL(stock);
           bySymbol.set(stock.symbol, entry);
@@ -344,13 +350,14 @@ export function registerPortfolioTools(server: McpServer) {
         campaign: z.string().describe('Campaign id or name.'),
         symbol: z.string().describe('Ticker, e.g. AAPL or BINANCE:ZECUSDT.'),
         shares: z.number().positive().describe('Number of shares/units bought.'),
-        buyPrice: z.number().positive().describe('Price paid per share/unit.'),
+        buyPrice: z.number().positive().describe('Price paid per share/unit, before fees.'),
+        fee: z.number().min(0).optional().describe('Total fee charged on the purchase, in dollars (e.g. Kraken or PayPal). Added to cost basis.'),
         asset: z.string().describe('Account holding this position, e.g. "Fidelity Dan".'),
         buyDate: z.string().optional().describe('ISO date of the purchase. Defaults to now.'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    async ({ campaign: ref, symbol, shares, buyPrice, asset, buyDate }) => {
+    async ({ campaign: ref, symbol, shares, buyPrice, fee, asset, buyDate }) => {
       const campaigns = await loadCampaigns();
       const campaign = resolveCampaign(campaigns, ref);
       if ('error' in campaign) return errorResult(campaign.error);
@@ -360,6 +367,7 @@ export function registerPortfolioTools(server: McpServer) {
         symbol: symbol.toUpperCase(),
         shares,
         buyPrice,
+        buyFee: fee ?? 0,
         buyDate: buyDate ? new Date(buyDate).toISOString() : new Date().toISOString(),
         locationId,
         transactions: [],
@@ -377,8 +385,9 @@ export function registerPortfolioTools(server: McpServer) {
         symbol: newStock.symbol,
         shares,
         buyPrice,
+        buyFee: newStock.buyFee,
         asset,
-        costBasis: round2(shares * buyPrice),
+        costBasis: round2(shares * buyPrice + newStock.buyFee),
       });
     }
   );
@@ -392,14 +401,15 @@ export function registerPortfolioTools(server: McpServer) {
       inputSchema: z.object({
         campaign: z.string().describe('Campaign id or name.'),
         holding: z.string().describe('Holding id (from get_campaign) or ticker if the campaign holds only one lot of it.'),
-        sellPrice: z.number().positive().describe('Price received per share/unit.'),
+        sellPrice: z.number().positive().describe('Price received per share/unit, before fees.'),
         shares: z.number().positive().optional().describe('Exact number of shares to sell.'),
         percent: z.number().min(0.01).max(100).optional().describe('Percent of the remaining position to sell. Ignored if shares is given.'),
+        fee: z.number().min(0).optional().describe('Total fee charged on the sale, in dollars (e.g. Kraken or PayPal). Deducted from realized P&L.'),
         sellDate: z.string().optional().describe('ISO date of the sale. Defaults to now.'),
       }),
       annotations: { readOnlyHint: false, destructiveHint: true },
     },
-    async ({ campaign: ref, holding: holdingRef, sellPrice, shares, percent, sellDate }) => {
+    async ({ campaign: ref, holding: holdingRef, sellPrice, shares, percent, fee, sellDate }) => {
       if (shares == null && percent == null) {
         return errorResult('Give either shares or percent.');
       }
@@ -424,6 +434,7 @@ export function registerPortfolioTools(server: McpServer) {
         type: 'sell' as const,
         shares: sharesToSell,
         price: sellPrice,
+        fee: fee ?? 0,
         date: sellDate ? new Date(sellDate).toISOString() : new Date().toISOString(),
         percentSold: Math.round((sharesToSell / remaining) * 100),
       };
@@ -450,11 +461,83 @@ export function registerPortfolioTools(server: McpServer) {
         symbol: stock.symbol,
         sharesSold: sharesToSell,
         sellPrice,
-        proceeds: round2(sharesToSell * sellPrice),
-        realizedPnL: round2(sharesToSell * (sellPrice - stock.buyPrice)),
+        fee: transaction.fee,
+        netProceeds: round2(sharesToSell * sellPrice - transaction.fee),
+        realizedPnL: round2(getSaleRealizedPnL(stock, transaction)),
         sharesRemaining: round2(remaining - sharesToSell),
         soldOut: remaining - sharesToSell <= 1e-9,
         clearedPriceAlerts: clearedAlerts,
+      });
+    }
+  );
+
+  server.registerTool(
+    'set_fee',
+    {
+      title: 'Set a fee',
+      description:
+        'Add or correct the fee on an existing purchase or sale, e.g. a Kraken or PayPal fee recorded after the fact. ' +
+        'Use target "buy" for the holding\'s purchase, or "sale" with a saleId from get_campaign. Set fee to 0 to remove one.',
+      inputSchema: z.object({
+        campaign: z.string().describe('Campaign id or name.'),
+        holding: z.string().describe('Holding id (from get_campaign) or ticker if the campaign holds only one lot of it.'),
+        target: z.enum(['buy', 'sale']).describe('"buy" for the purchase fee, "sale" for a sale fee.'),
+        saleId: z.string().optional().describe('Sale id from get_campaign. Required for target "sale" unless the holding has exactly one sale.'),
+        fee: z.number().min(0).describe('Total fee in dollars.'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    async ({ campaign: ref, holding: holdingRef, target, saleId, fee }) => {
+      const campaigns = await loadCampaigns();
+      const campaign = resolveCampaign(campaigns, ref);
+      if ('error' in campaign) return errorResult(campaign.error);
+
+      const stock = resolveHolding(campaign, holdingRef);
+      if ('error' in stock) return errorResult(stock.error);
+
+      let previousFee = 0;
+      let updatedStock: CampaignStock;
+
+      if (target === 'buy') {
+        previousFee = stock.buyFee ?? 0;
+        updatedStock = { ...stock, buyFee: fee };
+      } else {
+        const sale =
+          saleId ? stock.transactions.find((t) => t._id === saleId)
+          : stock.transactions.length === 1 ? stock.transactions[0]
+          : undefined;
+
+        if (!sale) {
+          return errorResult(
+            stock.transactions.length === 0
+              ? `${stock.symbol} in ${campaign.name} has no sales.`
+              : `Pick a sale with saleId — ${stock.symbol} has ${stock.transactions.length} sales: ${stock.transactions
+                  .map((t) => `${t._id} (${t.shares} @ $${t.price} on ${t.date.slice(0, 10)})`)
+                  .join(', ')}`
+          );
+        }
+
+        previousFee = sale.fee ?? 0;
+        updatedStock = {
+          ...stock,
+          transactions: stock.transactions.map((t) => (t._id === sale._id ? { ...t, fee } : t)),
+        };
+      }
+
+      await saveStocks(
+        campaign._id!,
+        campaign.stocks.map((s) => (s._id === stock._id ? updatedStock : s))
+      );
+
+      return jsonResult({
+        updated: true,
+        campaign: campaign.name,
+        symbol: stock.symbol,
+        target,
+        previousFee,
+        fee,
+        realizedPnL: round2(getRealizedPnL(updatedStock)),
+        costPerShare: Math.round(getCostPerShare(updatedStock) * 1e6) / 1e6,
       });
     }
   );

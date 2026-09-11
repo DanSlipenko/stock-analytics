@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useState } from "react";
-import { Button, Card, Form, Input } from "antd";
+import { Button, Form, Input } from "antd";
 import { LockOutlined } from "@ant-design/icons";
 import { useSearchParams } from "next/navigation";
 
@@ -38,11 +38,13 @@ function LoginForm() {
   };
 
   return (
-    <Card style={{ width: "100%", maxWidth: 360 }}>
-      <div className="sidebar-brand" style={{ padding: 0, border: 0, marginBottom: 20 }}>
+    <div className="login-panel">
+      <div className="sidebar-brand">
         <div className="sidebar-brand-icon">S</div>
         <span className="sidebar-brand-text">Finances</span>
       </div>
+      <h1 className="login-title">Sign In</h1>
+      <p className="login-subtitle">Enter your password to continue.</p>
       <Form layout="vertical" onFinish={handleSubmit} requiredMark={false}>
         <Form.Item
           name="password"
@@ -52,20 +54,20 @@ function LoginForm() {
           rules={[{ required: true, message: "Enter your password" }]}>
           <Input.Password prefix={<LockOutlined />} size="large" autoFocus autoComplete="current-password" />
         </Form.Item>
-        <Button type="primary" htmlType="submit" size="large" block loading={loading}>
-          Sign in
+        <Button type="primary" htmlType="submit" shape="round" size="large" block loading={loading} style={{ fontWeight: 600 }}>
+          Sign In
         </Button>
       </Form>
-    </Card>
+    </div>
   );
 }
 
 export default function LoginPage() {
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <main className="login-page">
       <Suspense>
         <LoginForm />
       </Suspense>
-    </div>
+    </main>
   );
 }

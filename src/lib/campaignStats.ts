@@ -1,5 +1,5 @@
 import { Campaign } from "@/types";
-import { getRemainingShares } from "@/lib/shares";
+import { getCostPerShare, getRemainingShares, getSaleRealizedPnL } from "@/lib/shares";
 
 type QuoteMap = Record<string, { currentPrice?: number } | undefined>;
 type PriceMap = Record<string, number | undefined>;
@@ -38,18 +38,16 @@ export function calculateCampaignStats(campaign: Campaign, quotes: QuoteMap = {}
   campaign.stocks.forEach((stock) => {
     const remainingShares = getRemainingShares(stock);
     const currentPrice = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
+    const costPerShare = getCostPerShare(stock);
 
-    const unrealizedStock = remainingShares * (currentPrice - stock.buyPrice);
-    const realizedStock = stock.transactions.reduce(
-      (sum, transaction) => sum + transaction.shares * (transaction.price - stock.buyPrice),
-      0
-    );
+    const unrealizedStock = remainingShares * (currentPrice - costPerShare);
+    const realizedStock = stock.transactions.reduce((sum, transaction) => sum + getSaleRealizedPnL(stock, transaction), 0);
 
-    invested += remainingShares * stock.buyPrice;
+    invested += remainingShares * costPerShare;
     currentValue += remainingShares * currentPrice;
     realized += realizedStock;
     // Cost of every share bought, so selling doesn't shrink the denominator.
-    costBasis += stock.shares * stock.buyPrice;
+    costBasis += stock.shares * costPerShare;
     pnl += unrealizedStock + realizedStock;
   });
 
@@ -95,11 +93,12 @@ export function calculateCampaignAnnualPnL(
   let basis = 0;
 
   campaign.stocks.forEach((stock) => {
+    const costPerShare = getCostPerShare(stock);
+
     stock.transactions.forEach((transaction) => {
       if (isInCurrentYear(transaction.date)) {
-        const gain = transaction.shares * (transaction.price - stock.buyPrice);
-        pnl += gain;
-        basis += Math.abs(transaction.shares * stock.buyPrice);
+        pnl += getSaleRealizedPnL(stock, transaction);
+        basis += Math.abs(transaction.shares * costPerShare);
       }
     });
 
@@ -109,9 +108,9 @@ export function calculateCampaignAnnualPnL(
     const currentPrice = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
 
     if (isInCurrentYear(stock.buyDate)) {
-      const unrealized = remainingShares * (currentPrice - stock.buyPrice);
+      const unrealized = remainingShares * (currentPrice - costPerShare);
       pnl += unrealized;
-      basis += remainingShares * stock.buyPrice;
+      basis += remainingShares * costPerShare;
       return;
     }
 

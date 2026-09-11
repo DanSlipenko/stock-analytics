@@ -127,43 +127,6 @@ body {
   background-clip: text;
 }
 
-/* ---- Stat cards grid ---- */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-bottom: 28px;
-}
-
-.stat-card {
-  position: relative;
-  overflow: hidden;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-}
-
-.stat-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.stat-card:hover::before {
-  opacity: 1;
-}
-
 /* ---- Gain / Loss colors ---- */
 .gain {
   color: var(--gain) !important;
@@ -175,12 +138,6 @@ body {
 
 .neutral {
   color: var(--text-secondary) !important;
-}
-
-/* ---- Campaign detail cards ---- */
-.campaign-detail-card {
-  border-radius: 12px;
-  overflow: hidden;
 }
 
 /* ---- Chart stock cards (rounded shell, square chart inside) ---- */
@@ -379,7 +336,9 @@ body {
   }
 }
 
-.mobile-stock-cards {
+/* Tables on wider screens, cards or grouped lists on phones. */
+.mobile-stock-cards,
+.mobile-list {
   display: none;
 }
 
@@ -602,13 +561,19 @@ body {
     height: 34px;
   }
 
+  /* Touch-sized on phones and tablets; 40px keeps the brand and all four
+     controls on one row at 375px. */
+  .app-header .mobile-menu-trigger.ant-btn,
+  .app-header-actions .header-icon-button.ant-btn {
+    width: 40px;
+    height: 40px;
+  }
+
   .mobile-menu-trigger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
-    margin-left: -6px;
+    margin-left: -8px;
     color: var(--text-primary) !important;
     font-size: 18px;
   }
@@ -618,21 +583,83 @@ body {
   }
 }
 
-.mobile-nav-drawer .ant-drawer-header {
-  border-bottom: 1px solid var(--border);
-  background: #0f1629;
+/* ---- Phone navigation drawer ----
+   An iPad-style sidebar list: 48px rows at the 17px body size, the current
+   page on a filled rounded row with its icon in the accent colour. Surface
+   colours and padding are set through the Drawer's styles prop, which beats
+   antd's own rules without !important. */
+.mobile-nav-drawer .mobile-header-brand {
+  gap: 12px;
 }
 
-.mobile-nav-drawer .ant-drawer-body {
-  background: #0f1629;
+/* An iOS-style round close button with a full touch target. */
+.mobile-nav-drawer .ant-drawer-header .ant-drawer-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: rgba(226, 232, 240, 0.08);
 }
 
-.mobile-nav-drawer .ant-drawer-close {
+.mobile-nav-drawer .ant-drawer-header .ant-drawer-close:hover {
+  color: var(--text-primary);
+  background: rgba(226, 232, 240, 0.14);
+}
+
+.mobile-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+
+.mobile-nav-drawer .mobile-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  transition: background-color 0.15s ease;
+}
+
+.mobile-nav-drawer .mobile-nav-item .anticon {
+  width: 22px;
+  font-size: 20px;
   color: var(--text-secondary);
 }
 
-.mobile-nav-drawer .mobile-header-brand {
-  gap: 12px;
+.mobile-nav-drawer .mobile-nav-item:hover,
+.mobile-nav-drawer .mobile-nav-item:active {
+  background: rgba(226, 232, 240, 0.06);
+}
+
+.mobile-nav-drawer .mobile-nav-item[aria-current="page"] {
+  font-weight: 600;
+  background: rgba(245, 245, 245, 0.1);
+}
+
+.mobile-nav-drawer .mobile-nav-item[aria-current="page"] .anticon {
+  color: var(--accent);
+}
+
+.mobile-nav-drawer .mobile-nav-item:focus-visible {
+  outline: 2px solid var(--campaigns-focus);
+  outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-nav-drawer .mobile-nav-item {
+    transition: none;
+  }
 }
 
 @media (max-width: 640px) {
@@ -657,36 +684,6 @@ body {
     width: 100%;
   }
 
-  .stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    margin-bottom: 18px;
-  }
-
-  .stat-card .ant-card-body {
-    padding: 14px 12px;
-  }
-
-  .stat-card .ant-statistic-title {
-    font-size: 11px;
-    margin-bottom: 6px;
-  }
-
-  /* antd's Statistic contentFontSize token (28px) outranks a plain class
-     selector, so this needs !important to win on phones. */
-  .stat-card .ant-statistic-content,
-  .stat-card .ant-statistic-content-value,
-  .stat-card .ant-statistic-content-value-int,
-  .stat-card .ant-statistic-content-value-decimal {
-    font-size: 17px !important;
-    line-height: 1.2;
-    overflow-wrap: anywhere;
-  }
-
-  .stat-card .ant-statistic-content-suffix {
-    font-size: 12px !important;
-  }
-
   /* Card heads with an action button stack instead of clipping the title. */
   .ant-card-head-wrapper {
     align-items: stretch;
@@ -707,10 +704,6 @@ body {
   }
 
   /* Keep any table that still doesn't fit inside its card. */
-  .data-table-card.ant-card > .ant-card-body {
-    padding: 12px;
-  }
-
   .ant-table-wrapper {
     max-width: 100%;
   }
@@ -728,33 +721,8 @@ body {
     padding: 10px 8px !important;
   }
 
-  .campaign-detail-card {
-    border-radius: 14px;
-  }
-
   .chart-stock-card {
     border-radius: 14px;
-  }
-
-  .campaign-detail-card .ant-card-head {
-    padding: 0 14px;
-  }
-
-  .campaign-detail-card .ant-card-head-wrapper {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 10px;
-    padding: 12px 0;
-  }
-
-  .campaign-detail-card .ant-card-head-title,
-  .campaign-detail-card .ant-card-extra {
-    padding: 0;
-    width: 100%;
-  }
-
-  .campaign-detail-card .ant-card-body {
-    padding: 14px;
   }
 
   .campaign-stocks-card.ant-card > .ant-card-body {
@@ -847,11 +815,13 @@ body {
     padding-inline: 0;
   }
 
-  .desktop-stock-table {
+  .desktop-stock-table,
+  .desktop-table {
     display: none;
   }
 
-  .mobile-stock-cards {
+  .mobile-stock-cards,
+  .mobile-list {
     display: block;
   }
 
@@ -910,9 +880,25 @@ body {
   }
 }
 
+/* ---- App header ----
+   The bar content scrolls under, so it takes the glass material (as the
+   time-range bar does) with a hairline in place of a border. */
+.app-header.ant-layout-header {
+  border-bottom: 1px solid var(--campaigns-edge);
+  background: rgba(15, 22, 41, 0.72);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .app-header.ant-layout-header {
+    background: #0f1629;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 /* ---- Header icon buttons ---- */
-/* Sized to sit level with the notification bell, which is a bare icon rather
-   than a button and so carries no AntD height of its own. */
 .header-icon-button.ant-btn {
   color: var(--text-secondary);
   width: 32px;
@@ -932,13 +918,9 @@ body {
   color: var(--text-secondary);
 }
 
-/* ---- Notification bell ---- */
-.notification-badge {
-  position: relative;
-}
-
-.notification-badge .ant-badge-count {
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+/* The bell's badge wrapper sets its own text colour; let the button's show through. */
+.header-icon-button .ant-badge {
+  color: inherit;
 }
 
 /* ---- Animations ---- */
@@ -999,12 +981,14 @@ body {
   pointer-events: none;
 }
 
-/* ---- Campaigns pages (list and detail) ----
+/* ---- Grouped surfaces (every page) ----
    Apple-style grouped surfaces on the app's navy palette: one quiet surface
    colour, hairline separators, and hierarchy from size and weight instead of
-   borders and glows. Scoped to .campaigns-page so the shared .page-header,
-   .stat-card and .chart-stock-card styles on other pages are untouched. */
-.campaigns-page {
+   borders and glows. Built for the campaigns pages and since adopted by every
+   page, which is why the classes keep the campaigns- prefix. Page rules are
+   scoped to .campaigns-page; the tokens sit on :root so portalled chrome such
+   as the phone nav drawer can use them too. */
+:root {
   --campaigns-surface: var(--bg-secondary);
   --campaigns-surface-hover: #151e30;
   /* Closed campaigns and sold positions: the surface at half strength over the page, kept opaque. */
@@ -1387,7 +1371,7 @@ body {
 }
 
 @media (prefers-contrast: more) {
-  .campaigns-page {
+  :root {
     --campaigns-edge: rgba(226, 232, 240, 0.3);
     --campaigns-edge-hover: rgba(226, 232, 240, 0.5);
     --campaigns-separator: #3a4456;
@@ -1748,9 +1732,11 @@ body {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-/* Starred keeps a faint amber edge to echo its star. Sold recedes the way
-   closed campaigns do — never red, which already means a loss. */
-.campaigns-page .chart-stock-card-starred {
+/* Starred keeps a faint amber edge to echo its star, as do positions on an
+   asset's sell list. Sold recedes the way closed campaigns do — never red,
+   which already means a loss. */
+.campaigns-page .chart-stock-card-starred,
+.campaigns-page .chart-stock-card-flagged {
   border-color: rgba(245, 158, 11, 0.32);
 }
 
@@ -1782,6 +1768,38 @@ body {
   font-size: 17px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+/* Without a star button in front, the header's tight leading padding would
+   leave the symbol against the card edge. */
+.campaigns-page .chart-stock-title > .chart-stock-symbol:first-child {
+  margin-left: 8px;
+}
+
+/* A symbol that opens the stock drawer. */
+button.chart-stock-symbol {
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+button.chart-stock-symbol:focus-visible,
+.chart-stock-campaign:focus-visible {
+  outline: 2px solid var(--campaigns-focus);
+  outline-offset: 2px;
+}
+
+.chart-stock-campaign {
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.chart-stock-campaign:hover,
+.chart-stock-campaign:active {
   color: var(--text-primary);
 }
 
@@ -1857,6 +1875,15 @@ body {
   background: rgba(245, 158, 11, 0.09) !important;
 }
 
+.campaigns-page .asset-prepare-sell-row > td {
+  background: rgba(245, 158, 11, 0.05) !important;
+  box-shadow: none;
+}
+
+.campaigns-page .asset-prepare-sell-row:hover > td {
+  background: rgba(245, 158, 11, 0.09) !important;
+}
+
 .campaigns-page .campaign-stock-row-sold > td {
   background: transparent !important;
 }
@@ -1899,7 +1926,8 @@ body {
   background: var(--campaigns-surface);
 }
 
-.campaigns-page .mobile-stock-card-starred {
+.campaigns-page .mobile-stock-card-starred,
+.campaigns-page .mobile-stock-card-flagged {
   border-color: rgba(245, 158, 11, 0.32);
 }
 
@@ -1997,6 +2025,343 @@ body {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
+}
+
+/* ---- Dashboard, watchlist, alerts and assets ---- */
+
+/* A section straight under the page header needs no extra lead-in. */
+.campaigns-page .page-header + .campaigns-section,
+.campaigns-container > .campaigns-section:first-child,
+.sell-list-callout + .campaigns-section {
+  margin-top: 0;
+}
+
+/* Triggered alerts and empty accounts recede the way closed campaigns do. */
+.campaigns-panel-inactive,
+.grouped-list-inactive {
+  border-color: rgba(226, 232, 240, 0.05);
+  background: var(--campaigns-surface-inactive);
+}
+
+.campaign-status-target {
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.14);
+}
+
+/* Assets with positions on their sell list keep the starred amber edge. */
+.campaign-list-card-flagged {
+  border-color: rgba(245, 158, 11, 0.32);
+}
+
+.campaign-list-card-flagged:hover {
+  border-color: rgba(245, 158, 11, 0.5);
+}
+
+/* shadcn tables take the stock table's look inside a panel: no frame of
+   their own, quiet headers, hairline rows. */
+.campaigns-panel [data-slot="table-container"] {
+  border: none;
+  border-radius: 0;
+}
+
+.campaigns-panel [data-slot="table-header"] {
+  background: transparent;
+}
+
+.campaigns-panel [data-slot="table-head"] {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.campaigns-panel [data-slot="table-head"]:first-child,
+.campaigns-panel [data-slot="table-cell"]:first-child {
+  padding-inline-start: 16px;
+}
+
+.campaigns-panel [data-slot="table-head"]:last-child,
+.campaigns-panel [data-slot="table-cell"]:last-child {
+  padding-inline-end: 16px;
+}
+
+.campaigns-panel [data-slot="table-row"] {
+  border-bottom-color: var(--campaigns-separator);
+}
+
+.campaigns-panel [data-slot="table-header"] [data-slot="table-row"]:hover {
+  background: transparent;
+}
+
+.campaigns-panel [data-slot="table-body"] [data-slot="table-row"]:hover {
+  background: rgba(245, 245, 245, 0.04);
+}
+
+/* Watchlist rows at their buy target: the faintest green, echoing the capsule. */
+.watchlist-row-target {
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.table-symbol {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* antd colours every <a> with its link blue, on hover and press too; links
+   inside tables read as text instead and underline on hover. */
+.table-link,
+.table-link:hover,
+.table-link:active {
+  color: var(--text-primary);
+}
+
+.table-link:hover,
+.table-link:focus-visible {
+  text-decoration: underline;
+}
+
+.campaigns-panel-inactive .table-symbol {
+  color: var(--text-secondary);
+}
+
+/* Direction rides on the arrow and the words, never on red or green: those mean gain and loss. */
+.alert-condition {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+}
+
+.alert-condition .anticon {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Grouped list: the phone form of those tables, one row per item. */
+.grouped-list {
+  overflow: hidden;
+  list-style: none;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 20px;
+  background: var(--campaigns-surface);
+}
+
+.grouped-list > li + li {
+  border-top: 1px solid var(--campaigns-separator);
+}
+
+.grouped-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 12px 16px;
+}
+
+a.grouped-list-row {
+  color: inherit;
+  transition: background-color 0.15s ease;
+}
+
+a.grouped-list-row:hover,
+a.grouped-list-row:active {
+  color: inherit;
+  background: var(--campaigns-surface-hover);
+}
+
+a.grouped-list-row:focus-visible {
+  outline: 2px solid var(--campaigns-focus);
+  outline-offset: -2px;
+}
+
+.grouped-list-main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.grouped-list-title {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.grouped-list-inactive .grouped-list-title {
+  color: var(--text-secondary);
+}
+
+.grouped-list-subtitle {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.grouped-list-trailing {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+}
+
+.grouped-list-value {
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.grouped-list-chevron {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Watchlist notes under a phone card's figures. */
+.mobile-stock-note {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-secondary);
+}
+
+/* The campaign a position belongs to, on an asset's phone cards. */
+.mobile-stock-funding a,
+.mobile-stock-funding a:hover,
+.mobile-stock-funding a:active {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+/* Asset sell list: the callout above the stocks and the per-position toggle.
+   Amber, like starred positions, because it marks intent rather than a result. */
+.sell-list-callout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 28px;
+  padding: 10px 10px 10px 16px;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-radius: 16px;
+  background: var(--campaigns-surface);
+}
+
+.sell-list-callout-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.sell-list-callout-text .anticon {
+  color: #fcd34d;
+}
+
+.sell-toggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--campaigns-edge-hover);
+  border-radius: 999px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.sell-toggle:hover {
+  color: var(--text-primary);
+  background: rgba(226, 232, 240, 0.06);
+}
+
+.sell-toggle-on {
+  border-color: transparent;
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.sell-toggle-on:hover {
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.sell-toggle:focus-visible {
+  outline: 2px solid var(--campaigns-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  a.grouped-list-row,
+  .sell-toggle {
+    transition: none;
+  }
+}
+
+/* ---- Sign in ---- */
+.login-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+.login-panel {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px 24px 24px;
+  border: 1px solid var(--campaigns-edge);
+  border-radius: 20px;
+  background: var(--campaigns-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.login-panel .sidebar-brand {
+  margin-bottom: 24px;
+  padding: 0;
+  border: none;
+}
+
+.login-title {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  color: var(--text-primary);
+}
+
+.login-subtitle {
+  margin: 6px 0 20px;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--text-secondary);
 }
 
 /* ---- Empty state ---- */

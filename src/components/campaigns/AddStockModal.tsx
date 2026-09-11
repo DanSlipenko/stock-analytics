@@ -59,6 +59,7 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
         symbol: selectedSymbol,
         shares: values.shares,
         buyPrice: values.buyPrice,
+        buyFee: values.buyFee || 0,
         buyDate: values.buyDate?.toISOString() || new Date().toISOString(),
         locationId,
         transactions: [],
@@ -140,6 +141,10 @@ export default function AddStockModal({ open, onClose, campaign, stock }: AddSto
 
         <Form.Item name="buyPrice" label="Buy Price (per share)" rules={[{ required: true, message: "Enter buy price per share" }]}>
           <InputNumber placeholder="e.g. 150.00" style={{ width: "100%" }} size="large" prefix="$" min={0} step={0.01} />
+        </Form.Item>
+
+        <Form.Item name="buyFee" label="Fee (optional)" tooltip="Total fee charged for this purchase, e.g. by Kraken or PayPal">
+          <InputNumber placeholder="0.00" style={{ width: "100%" }} size="large" prefix="$" min={0} step={0.01} />
         </Form.Item>
 
         <Form.Item name="buyDate" label="Buy Date">

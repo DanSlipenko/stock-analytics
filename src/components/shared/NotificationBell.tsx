@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Badge, Dropdown, Empty, List, Typography } from 'antd';
+import { Badge, Button, Dropdown, Empty, List, Typography } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import { useStore } from '@/context/StoreContext';
 
@@ -65,14 +65,17 @@ export default function NotificationBell() {
       trigger={['click']}
       placement="bottomRight"
     >
-      <div
-        className="notification-badge"
-        style={{ cursor: 'pointer', padding: '4px 8px', display: 'flex', alignItems: 'center' }}
-      >
-        <Badge count={count} size="small" offset={[-2, 2]}>
-          <BellOutlined style={{ fontSize: 20, color: '#94a3b8' }} />
-        </Badge>
-      </div>
+      {/* A real button, sized with the other header controls, so it is reachable by keyboard. */}
+      <Button
+        type="text"
+        className="header-icon-button"
+        aria-label={count > 0 ? `Notifications, ${count} new` : 'Notifications'}
+        icon={
+          <Badge count={count} size="small" offset={[-2, 2]}>
+            <BellOutlined style={{ fontSize: 18 }} />
+          </Badge>
+        }
+      />
     </Dropdown>
   );
 }

@@ -24,6 +24,7 @@ export default function EditTransactionModal({ open, onClose, campaign, stock, t
       form.setFieldsValue({
         shares: transaction.shares,
         price: transaction.price,
+        fee: transaction.fee || undefined,
         date: transaction.date ? dayjs(transaction.date) : dayjs(),
       });
     }
@@ -46,6 +47,7 @@ export default function EditTransactionModal({ open, onClose, campaign, stock, t
                   ...t,
                   shares: values.shares,
                   price: values.price,
+                  fee: values.fee || 0,
                   date: values.date ? values.date.toISOString() : t.date,
                 };
               }
@@ -96,6 +98,10 @@ export default function EditTransactionModal({ open, onClose, campaign, stock, t
 
         <Form.Item name="price" label="Sell Price (per share)" rules={[{ required: true, message: "Enter price" }]}>
           <InputNumber style={{ width: "100%" }} size="large" prefix="$" min={0} step={0.01} />
+        </Form.Item>
+
+        <Form.Item name="fee" label="Fee (optional)" tooltip="Total fee charged for this sale, e.g. by Kraken or PayPal">
+          <InputNumber style={{ width: "100%" }} size="large" prefix="$" min={0} step={0.01} placeholder="0.00" />
         </Form.Item>
 
         <Form.Item name="date" label="Sell Date" rules={[{ required: true, message: "Select date" }]}>

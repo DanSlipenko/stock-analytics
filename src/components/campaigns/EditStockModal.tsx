@@ -32,6 +32,7 @@ export default function EditStockModal({ open, onClose, campaign, stock, onEditT
       form.setFieldsValue({
         shares: stock.shares,
         buyPrice: stock.buyPrice,
+        buyFee: stock.buyFee || undefined,
         buyDate: stock.buyDate ? dayjs(stock.buyDate) : null,
         asset: location ? institutionOf(location) : undefined,
       });
@@ -54,6 +55,7 @@ export default function EditStockModal({ open, onClose, campaign, stock, onEditT
             ...s,
             shares: values.shares,
             buyPrice: values.buyPrice,
+            buyFee: values.buyFee || 0,
             buyDate: values.buyDate?.toISOString() || stock.buyDate,
             locationId,
           };
@@ -98,6 +100,10 @@ export default function EditStockModal({ open, onClose, campaign, stock, onEditT
 
         <Form.Item name="buyPrice" label="Buy Price (per share)" rules={[{ required: true, message: "Enter buy price per share" }]}>
           <InputNumber placeholder="e.g. 150.00" style={{ width: "100%" }} size="large" prefix="$" min={0} step={0.01} />
+        </Form.Item>
+
+        <Form.Item name="buyFee" label="Fee (optional)" tooltip="Total fee charged for this purchase, e.g. by Kraken or PayPal">
+          <InputNumber placeholder="0.00" style={{ width: "100%" }} size="large" prefix="$" min={0} step={0.01} />
         </Form.Item>
 
         <Form.Item name="buyDate" label="Buy Date">

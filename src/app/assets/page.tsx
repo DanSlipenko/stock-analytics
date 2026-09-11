@@ -1,27 +1,27 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-import { Card, Button, Statistic, Row, Col, Empty, Skeleton, Modal, Input, AutoComplete, message, Popconfirm, Tag, Typography } from "antd";
-import {
-  BankOutlined,
-  DollarOutlined,
-  TrophyOutlined,
-  WalletOutlined,
-  RightOutlined,
-  PlusOutlined,
-  DeleteOutlined,
-  EditOutlined,
-} from "@ant-design/icons";
+import { Button, Skeleton, Modal, Input, AutoComplete, message, Popconfirm, Typography } from "antd";
+import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { Pencil } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
+import { usePeriodPrices } from "@/hooks/usePeriodPrices";
+import CampaignSummary, { SummaryMetric } from "@/components/campaigns/CampaignSummary";
+import MetaLine from "@/components/shared/MetaLine";
+import PnLDisplay from "@/components/shared/PnLDisplay";
+import { Button as UiButton } from "@/components/ui/button";
 import {
+  annualForStocks,
   assetOptions,
   AssetStock,
   buildAssetGroups,
   DEFAULT_ASSETS,
   formatCurrency,
+  getCostPerShare,
   getRemainingShares,
+  getSoldShares,
   isSoldOut,
   lastDayForStocks,
   normalizeName,
@@ -29,7 +29,8 @@ import {
   slugify,
   statsForStocks,
 } from "@/lib/assets";
-import PnLDisplay from "@/components/shared/PnLDisplay";
+import { formatStockSummary, formatUsd, pluralize } from "@/lib/campaignFormat";
+import { cn } from "@/lib/utils";
 
 type DisplayAccount = {
   key: string;
@@ -41,29 +42,28 @@ type DisplayAccount = {
   assetId?: string;
 };
 
+const SKELETON_METRICS: SummaryMetric[] = ["Today", "This Year", "Total P&L", "Realized"].map((label) => ({
+  label,
+  value: 0,
+  percentage: 0,
+  pending: true,
+}));
+
 function AssetsPageSkeleton() {
   return (
-    <div className="page-container">
+    <div className="page-container campaigns-page campaigns-container">
       <div className="page-header">
-        <Skeleton.Input active size="large" style={{ width: 180 }} />
+        <h1>Assets</h1>
+        <Skeleton.Button active size="large" shape="round" style={{ width: 128 }} />
       </div>
-      <div className="stats-grid">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Card key={index} className="stat-card" bordered={false}>
-            <Skeleton.Input active size="small" style={{ width: 96, marginBottom: 10 }} />
-            <Skeleton.Input active size="large" style={{ width: 160 }} />
-          </Card>
+      <CampaignSummary label="Sellable Value" value={0} pending metrics={SKELETON_METRICS} />
+      <div className="campaigns-grid">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div key={index} className="campaigns-panel campaigns-panel-padded">
+            <Skeleton active title={{ width: "50%" }} paragraph={{ rows: 3 }} />
+          </div>
         ))}
       </div>
-      <Row gutter={[16, 16]}>
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Col key={index} xs={24} md={12} lg={8}>
-            <Card bordered={false} style={{ background: "#0f1629" }}>
-              <Skeleton active paragraph={{ rows: 2 }} />
-            </Card>
-          </Col>
-        ))}
-      </Row>
     </div>
   );
 }
@@ -90,7 +90,9 @@ export default function AssetsPage() {
   }, [assetGroups]);
 
   const { quotes, loading: quotesLoading } = useStockQuotes(symbols);
+  const { yearStartPrices, loading: periodPricesLoading } = usePeriodPrices(symbols);
   const quotesPending = symbols.length > 0 && quotesLoading && Object.keys(quotes).length === 0;
+  const periodPricesPending = symbols.length > 0 && periodPricesLoading && Object.keys(yearStartPrices).length === 0;
 
   // Build the full asset list: built-in institutions + registered + any in use.
   const displayAccounts = useMemo<DisplayAccount[]>(() => {
@@ -134,6 +136,8 @@ export default function AssetsPage() {
   const allStocks = useMemo(() => assetGroups.flatMap((group) => group.stocks), [assetGroups]);
   const overallStats = statsForStocks(allStocks, quotes);
   const overallLastDay = lastDayForStocks(allStocks, quotes);
+  const overallAnnual = annualForStocks(allStocks, quotes, yearStartPrices);
+  const realizedBasis = allStocks.reduce((sum, stock) => sum + getSoldShares(stock) * getCostPerShare(stock), 0);
 
   const handleCreateAsset = async () => {
     const name = newAssetName.trim();
@@ -241,177 +245,183 @@ export default function AssetsPage() {
     return <AssetsPageSkeleton />;
   }
 
-  return (
-    <div className="page-container">
-      <div className="page-header">
-        <div className="campaign-page-heading">
-          <WalletOutlined style={{ fontSize: 22, color: "#3b82f6" }} />
-          <h1>Assets</h1>
+  // Ordered by time horizon, shortest first; realized gains close the row.
+  const summaryMetrics: SummaryMetric[] = [
+    { label: "Today", value: overallLastDay.value, percentage: overallLastDay.percentage, pending: quotesPending },
+    {
+      label: "This Year",
+      value: overallAnnual.pnl,
+      percentage: overallAnnual.pnlPercent,
+      pending: quotesPending || periodPricesPending,
+    },
+    { label: "Total P&L", value: overallStats.pnl, percentage: overallStats.pnlPercent, pending: quotesPending },
+    {
+      label: "Realized",
+      value: overallStats.realized,
+      percentage: realizedBasis > 0 ? (overallStats.realized / realizedBasis) * 100 : 0,
+    },
+  ];
+
+  const getOpenPositions = (account: DisplayAccount) => account.stocks.filter((stock) => !isSoldOut(stock)).length;
+
+  // Accounts holding stocks lead as cards, fully sold ones sinking to the end; the rest are only names
+  // to pick from, so they get a quiet list.
+  const heldAccounts = displayAccounts
+    .filter((account) => account.stocks.length > 0)
+    .sort((a, b) => Number(getOpenPositions(a) === 0) - Number(getOpenPositions(b) === 0));
+  const emptyAccounts = displayAccounts.filter((account) => account.stocks.length === 0);
+
+  const renderAccount = (account: DisplayAccount) => {
+    const stats = statsForStocks(account.stocks, quotes);
+    const lastDay = lastDayForStocks(account.stocks, quotes);
+    const positions = getOpenPositions(account);
+    const fullySold = positions === 0;
+    const campaignCount = new Set(account.stocks.map((stock) => stock.campaignId)).size;
+    const prepareStocks = account.stocks.filter((stock) => !isSoldOut(stock) && stock.prepareToSell);
+    const prepareValue = prepareStocks.reduce((sum, stock) => {
+      const currentPrice = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
+      return sum + getRemainingShares(stock) * currentPrice;
+    }, 0);
+    const valueSkeleton = <Skeleton.Input active size="small" style={{ width: 120 }} />;
+    const open = () => router.push(`/assets/${account.slug}`);
+
+    return (
+      <article
+        key={account.key}
+        className={cn(
+          "campaign-list-card",
+          fullySold && "campaign-list-card-inactive",
+          prepareStocks.length > 0 && "campaign-list-card-flagged",
+        )}
+        onClick={(event) => {
+          // Let the title and rename buttons handle their own clicks.
+          if ((event.target as HTMLElement).closest("button, a, input")) return;
+          open();
+        }}>
+        <div className="campaign-list-card-header">
+          <div className="campaign-list-card-heading">
+            <div className="campaign-list-card-title-row">
+              <button type="button" className="campaign-list-card-title" onClick={open}>
+                {account.name}
+              </button>
+              {account.registered && <span className="campaign-status">Custom</span>}
+              {fullySold && <span className="campaign-status">Fully Sold</span>}
+              {prepareStocks.length > 0 && (
+                <span className="campaign-status campaign-status-alert">
+                  {prepareStocks.length} to sell · {formatCurrency(prepareValue)}
+                </span>
+              )}
+            </div>
+            <MetaLine
+              parts={[formatStockSummary(positions, account.stocks.length), pluralize(campaignCount, "campaign")]}
+              className="campaign-list-card-subtitle"
+            />
+          </div>
+
+          <div className="campaign-list-card-menu">
+            <UiButton
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Rename ${account.name}`}
+              title="Rename or merge"
+              onClick={() => openRename(account)}>
+              <Pencil />
+            </UiButton>
+          </div>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+
+        <div className="campaign-list-card-body">
+          <dl className="campaign-list-card-hero">
+            <dt>Sellable Value</dt>
+            <dd>{quotesPending ? valueSkeleton : formatUsd(stats.currentValue, 0)}</dd>
+          </dl>
+
+          <dl className="campaign-list-card-rows">
+            <div className="campaign-list-card-row">
+              <dt>Invested</dt>
+              <dd>{formatUsd(stats.invested, 0)}</dd>
+            </div>
+            <div className="campaign-list-card-row">
+              <dt>Total P&L</dt>
+              <dd>{quotesPending ? valueSkeleton : <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} />}</dd>
+            </div>
+            {/* Nothing left to move today once everything is sold; what it made is the figure that matters. */}
+            {fullySold ?
+              <div className="campaign-list-card-row">
+                <dt>Realized</dt>
+                <dd>
+                  <PnLDisplay value={stats.realized} />
+                </dd>
+              </div>
+            : <div className="campaign-list-card-row">
+                <dt>Today</dt>
+                <dd>{quotesPending ? valueSkeleton : <PnLDisplay value={lastDay.value} percentage={lastDay.percentage} />}</dd>
+              </div>
+            }
+          </dl>
+        </div>
+      </article>
+    );
+  };
+
+  return (
+    <div className="page-container campaigns-page campaigns-container">
+      <div className="page-header">
+        <h1>Assets</h1>
+        <Button
+          type="primary"
+          shape="round"
+          size="large"
+          icon={<PlusOutlined />}
+          className="campaigns-primary-action"
+          onClick={() => setCreateOpen(true)}>
           New Asset
         </Button>
       </div>
 
-      {/* Portfolio-wide summary */}
-      <div className="stats-grid animate-in">
-        <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: "#64748b" }}>Invested</span>}
-            value={overallStats.invested}
-            prefix={<DollarOutlined style={{ color: "#3b82f6" }} />}
-            precision={2}
-            valueStyle={{ color: "#e2e8f0" }}
-            formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          />
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total Sellable Value</div>
-          {quotesPending ?
-            <Skeleton.Input active size="large" style={{ width: 160 }} />
-          : <Statistic
-              value={overallStats.currentValue}
-              precision={2}
-              valueStyle={{ color: "#e2e8f0" }}
-              formatter={(v) => `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            />
-          }
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Last Day</div>
-          {quotesPending ?
-            <Skeleton.Input active size="large" style={{ width: 160 }} />
-          : <PnLDisplay value={overallLastDay.value} percentage={overallLastDay.percentage} size="large" />}
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <div style={{ color: "#64748b", fontSize: 14, marginBottom: 8 }}>Total P&L</div>
-          {quotesPending ?
-            <Skeleton.Input active size="large" style={{ width: 160 }} />
-          : <PnLDisplay value={overallStats.pnl} percentage={overallStats.pnlPercent} size="large" />}
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: "#64748b" }}>Realized Gains</span>}
-            prefix={<TrophyOutlined style={{ color: "#f59e0b" }} />}
-            value={overallStats.realized}
-            precision={2}
-            valueStyle={{ color: overallStats.realized >= 0 ? "#22c55e" : "#ef4444" }}
-            formatter={(v) => `${Number(v) >= 0 ? "+" : ""}$${Math.abs(Number(v)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          />
-        </Card>
-      </div>
+      <CampaignSummary
+        label="Sellable Value"
+        value={overallStats.currentValue}
+        pending={quotesPending}
+        detail={`Invested ${formatUsd(overallStats.invested)}`}
+        metrics={summaryMetrics}
+      />
 
-      {/* Asset list */}
-      <Card
-        className="campaign-detail-card"
-        title={
-          <span style={{ color: "#e2e8f0", display: "flex", alignItems: "center", gap: 8 }}>
-            <BankOutlined /> Assets
-          </span>
-        }
-        bordered={false}>
-        <Row gutter={[16, 16]}>
-          {displayAccounts.map((account) => {
-            const stats = statsForStocks(account.stocks, quotes);
-            const positions = account.stocks.filter((stock) => !isSoldOut(stock)).length;
-            const hasHoldings = account.stocks.length > 0;
-            const removable = account.registered && !account.builtIn && !hasHoldings;
-            const prepareStocks = account.stocks.filter((stock) => !isSoldOut(stock) && stock.prepareToSell);
-            const prepareCount = prepareStocks.length;
-            const prepareValue = prepareStocks.reduce((sum, stock) => {
-              const currentPrice = quotes[stock.symbol]?.currentPrice ?? stock.buyPrice;
-              return sum + getRemainingShares(stock) * currentPrice;
-            }, 0);
+      {heldAccounts.length > 0 && <div className="campaigns-grid">{heldAccounts.map(renderAccount)}</div>}
 
-            const onCardClick = () => {
-              if (hasHoldings) router.push(`/assets/${account.slug}`);
-            };
-
-            return (
-              <Col key={account.key} xs={24} md={12} lg={8}>
-                <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={onCardClick}
-                  onKeyDown={(e) => {
-                    if ((e.key === "Enter" || e.key === " ") && hasHoldings) {
-                      e.preventDefault();
-                      onCardClick();
-                    }
-                  }}
-                  className="asset-account-card"
-                  style={{
-                    position: "relative",
-                    width: "100%",
-                    textAlign: "left",
-                    cursor: hasHoldings ? "pointer" : "default",
-                    background: prepareCount > 0 ? "rgba(120, 53, 15, 0.14)" : "#0f1629",
-                    border: prepareCount > 0 ? "1px solid rgba(245, 158, 11, 0.5)" : "1px solid #1e2a3a",
-                    borderRadius: 10,
-                    padding: 16,
-                    transition: "border-color 0.15s ease, transform 0.15s ease",
-                  }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 12 }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span style={{ fontWeight: 700, color: "#e2e8f0", fontSize: 15 }}>{account.name}</span>
-                        {account.registered && <Tag color="blue" style={{ margin: 0 }}>Custom</Tag>}
-                        {prepareCount > 0 && (
-                          <Tag color="gold" style={{ margin: 0 }}>
-                            {prepareCount} to sell · {formatCurrency(prepareValue)}
-                          </Tag>
-                        )}
-                      </div>
-                      {!hasHoldings && <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>No holdings yet</div>}
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {hasHoldings ?
-                        <>
-                          <Button
-                            type="text"
-                            size="small"
-                            icon={<EditOutlined />}
-                            title="Rename / merge"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openRename(account);
-                            }}
-                          />
-                          <div style={{ textAlign: "right" }}>
-                            <div style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4 }}>Positions</div>
-                            <div style={{ fontSize: 20, fontWeight: 800, color: "#e2e8f0" }}>{positions}</div>
-                          </div>
-                          <RightOutlined style={{ color: "#64748b", fontSize: 12 }} />
-                        </>
-                      : removable && (
-                          <Popconfirm
-                            title="Remove this asset?"
-                            description="This only removes it from your asset list; campaigns are untouched."
-                            onConfirm={() => handleDeleteAsset(account.assetId)}>
-                            <Button type="text" danger size="small" icon={<DeleteOutlined />} onClick={(e) => e.stopPropagation()} />
-                          </Popconfirm>
-                        )
-                      }
-                    </div>
-                  </div>
-                  {hasHoldings && (
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                      <div>
-                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>Sellable Value</div>
-                        <div style={{ fontWeight: 700, color: "#e2e8f0" }}>{formatCurrency(stats.currentValue)}</div>
-                      </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>P&L</div>
-                        <PnLDisplay value={stats.pnl} percentage={stats.pnlPercent} size="small" />
-                      </div>
-                    </div>
-                  )}
+      {emptyAccounts.length > 0 && (
+        <section className="campaigns-section" aria-labelledby="empty-assets-title">
+          <h2 id="empty-assets-title" className="campaigns-section-title">
+            No Holdings <span className="campaigns-section-count">{emptyAccounts.length}</span>
+          </h2>
+          <p className="campaigns-section-footnote">Ready to pick when you add a stock to any campaign.</p>
+          <ul className="grouped-list grouped-list-inactive">
+            {emptyAccounts.map((account) => (
+              <li key={account.key} className="grouped-list-row">
+                <div className="grouped-list-main">
+                  <span className="grouped-list-title">{account.name}</span>
                 </div>
-              </Col>
-            );
-          })}
-        </Row>
-      </Card>
+                {account.registered && <span className="campaign-status">Custom</span>}
+                {account.registered && !account.builtIn && (
+                  <Popconfirm
+                    title="Remove this asset?"
+                    description="This only removes it from your asset list; campaigns are untouched."
+                    onConfirm={() => handleDeleteAsset(account.assetId)}>
+                    <Button
+                      type="text"
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
+                      aria-label={`Remove ${account.name}`}
+                      style={{ width: 36, height: 36 }}
+                    />
+                  </Popconfirm>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Create asset modal */}
       <Modal

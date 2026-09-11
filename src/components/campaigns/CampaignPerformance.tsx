@@ -4,7 +4,7 @@ import React, { useCallback, useMemo, useState } from "react";
 import { Segmented, Skeleton } from "antd";
 import { Campaign, StockQuote } from "@/types";
 import { ChangeCapsule } from "@/components/campaigns/CampaignSummary";
-import PerformanceChart from "@/components/charts/PerformanceChart";
+import PerformanceChart, { type PerformanceRange } from "@/components/charts/PerformanceChart";
 import { type TimeRange } from "@/components/charts/timeRanges";
 import { useCampaignHistory } from "@/hooks/useCampaignHistory";
 import {
@@ -94,6 +94,8 @@ function PerformanceSkeleton() {
 export default function CampaignPerformance({ campaign, quotes, range }: CampaignPerformanceProps) {
   const [mode, setMode] = useState<PerformanceMode>("pnl");
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  /** A span being measured on the chart; only set while the gesture is held. */
+  const [measured, setMeasured] = useState<PerformanceRange | null>(null);
 
   const chartWindow = useMemo(() => getPerformanceWindow(campaign, range), [campaign, range]);
   const { history, loading } = useCampaignHistory(chartWindow);
@@ -152,9 +154,23 @@ export default function CampaignPerformance({ campaign, quotes, range }: Campaig
     [points, baseline, mode],
   );
 
+  const describeRange = useCallback(
+    (span: PerformanceRange) => {
+      const from = points[span.from];
+      const to = points[span.to];
+      if (!from || !to) return "";
+
+      const change = mode === "pnl" ? to.pnl - from.pnl : to.value - from.value;
+      const direction = change > 0 ? "up" : change < 0 ? "down" : "even";
+      return `${spokenDay(from.day)} to ${spokenDay(to.day)}: ${direction} ${formatUsd(Math.abs(change))}${mode === "value" ? " in stocks" : ""}`;
+    },
+    [points, mode],
+  );
+
   const changeMode = (next: PerformanceMode) => {
     setMode(next);
     setActiveIndex(null);
+    setMeasured(null);
   };
 
   if (!chartWindow) return null;
@@ -198,24 +214,43 @@ export default function CampaignPerformance({ campaign, quotes, range }: Campaig
         ]
       : [];
 
+    // While a span is measured the readout is the difference between its two ends,
+    // the way a stock chart's two-finger comparison works. The capsule stays a
+    // gain measure either way: the span's P&L against the money in play, so new
+    // buys raise the value line without reading as a gain.
+    const measuredFrom = measured ? points[measured.from] : undefined;
+    const measuredTo = measured ? points[measured.to] : undefined;
+
+    const readout =
+      measuredFrom && measuredTo ?
+        {
+          label: `${readoutDay(measuredFrom.day)} – ${readoutDay(measuredTo.day)}`,
+          value: formatSignedUsd(mode === "pnl" ? measuredTo.pnl - measuredFrom.pnl : measuredTo.value - measuredFrom.value),
+          percentage: periodReturnPercent(measuredTo, measuredFrom),
+          detail:
+            mode === "value" ?
+              `Invested ${formatSignedUsd(measuredTo.invested - measuredFrom.invested)}`
+            : `Total P&L ${formatSignedUsd(measuredFrom.pnl)} → ${formatSignedUsd(measuredTo.pnl)}`,
+        }
+      : {
+          label: hoverIndex != null ? readoutDay(active.day) : periodLabel,
+          value: mode === "pnl" ? formatSignedUsd(active.pnl - baseline.pnl) : formatUsd(active.value),
+          percentage: mode === "pnl" ? periodReturnPercent(active, baseline) : unrealizedPercent(active),
+          detail: mode === "value" ? `Invested ${formatUsd(active.invested)}` : `Total P&L ${formatSignedUsd(active.pnl)}`,
+        };
+
     return (
       <>
         <dl className="performance-readout">
-          <dt>{hoverIndex != null ? readoutDay(active.day) : periodLabel}</dt>
+          <dt>{readout.label}</dt>
           <dd>
-            <span className="performance-readout-value">
-              {mode === "pnl" ? formatSignedUsd(active.pnl - baseline.pnl) : formatUsd(active.value)}
-            </span>
+            <span className="performance-readout-value">{readout.value}</span>
             <span className="performance-readout-meta">
-              <ChangeCapsule percentage={mode === "pnl" ? periodReturnPercent(active, baseline) : unrealizedPercent(active)} />
+              <ChangeCapsule percentage={readout.percentage} />
               <span className="performance-readout-detail">
-                {mode === "value" ?
-                  <>
-                    {/* Doubles as the chart's legend: this is the dashed line. */}
-                    <span className="performance-key" aria-hidden />
-                    Invested {formatUsd(active.invested)}
-                  </>
-                : <>Total P&amp;L {formatSignedUsd(active.pnl)}</>}
+                {/* Doubles as the chart's legend: this is the dashed line. */}
+                {mode === "value" && <span className="performance-key" aria-hidden />}
+                {readout.detail}
               </span>
             </span>
           </dd>
@@ -231,6 +266,9 @@ export default function CampaignPerformance({ campaign, quotes, range }: Campaig
           label={chartLabel}
           activeIndex={hoverIndex}
           onActiveIndexChange={setActiveIndex}
+          range={measured}
+          onRangeChange={setMeasured}
+          describeRange={describeRange}
           busy={loading}
         />
 

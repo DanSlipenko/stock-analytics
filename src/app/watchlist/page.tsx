@@ -1,23 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
-import {
-  Card,
-  Button,
-  Tag,
-  Empty,
-  Spin,
-  Modal,
-  Form,
-  InputNumber,
-  Input,
-  message,
-  Popconfirm,
-  Row,
-  Col,
-  Segmented,
-  Space,
-} from "antd";
+import { Button, Spin, Modal, Form, InputNumber, Input, message, Popconfirm, Segmented } from "antd";
 import { PlusOutlined, EyeOutlined, DeleteOutlined, UnorderedListOutlined, AppstoreOutlined, LineChartOutlined } from "@ant-design/icons";
 import { useStore } from "@/context/StoreContext";
 import { useStockQuotes } from "@/hooks/useStockQuote";
@@ -26,11 +10,26 @@ import StockDetailDrawer from "@/components/charts/StockDetailDrawer";
 import StockChart, { ChartAlertRule, TimeRange } from "@/components/charts/StockChart";
 import TimeRangeFilter from "@/components/charts/TimeRangeFilter";
 import PnLDisplay from "@/components/shared/PnLDisplay";
-import { WatchlistItem } from "@/types";
+import { formatUsd } from "@/lib/campaignFormat";
+import { getQuoteLastDayMovement } from "@/lib/assets";
+import { StockQuote, WatchlistItem } from "@/types";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const hasValidQuote = (quote?: { currentPrice: number }): quote is { currentPrice: number } =>
   Boolean(quote && Number.isFinite(quote.currentPrice) && quote.currentPrice > 0);
+
+const getTargetStatus = (item: WatchlistItem, quote?: StockQuote) => {
+  const currentPrice = hasValidQuote(quote) ? quote.currentPrice : null;
+
+  return {
+    currentPrice,
+    atTarget: currentPrice != null && currentPrice <= item.targetBuyPrice,
+    // How far the price still has to fall, as a share of today's price.
+    distance: currentPrice != null ? ((currentPrice - item.targetBuyPrice) / currentPrice) * 100 : null,
+  };
+};
+
+const TargetCapsule = () => <span className="campaign-status campaign-status-target">At Target</span>;
 
 export default function WatchlistPage() {
   const { state, dispatch } = useStore();
@@ -92,154 +91,239 @@ export default function WatchlistPage() {
       </div>
     );
 
+  const empty = <span className="neutral">—</span>;
+
+  const renderDistance = ({ atTarget, distance }: ReturnType<typeof getTargetStatus>) =>
+    atTarget ? "Reached"
+    : distance != null ? `${distance.toFixed(2)}% above`
+    : "—";
+
+  const renderLastDay = (quote?: StockQuote, fallback: React.ReactNode = empty) => {
+    const movement = getQuoteLastDayMovement(quote);
+    return movement ? <PnLDisplay value={movement.value} percentage={movement.percentage} size="small" /> : fallback;
+  };
+
+  const renderRemoveButton = (item: WatchlistItem) => (
+    <Popconfirm title="Remove from watchlist?" onConfirm={() => item._id && handleDelete(item._id)}>
+      <Button
+        type="text"
+        danger
+        icon={<DeleteOutlined />}
+        size="small"
+        aria-label={`Remove ${item.symbol} from watchlist`}
+        style={{ width: 36, height: 36 }}
+      />
+    </Popconfirm>
+  );
+
+  const renderSymbolButton = (item: WatchlistItem, className: string) => (
+    <Button type="link" className={className} onClick={() => setDrawerSymbol(item.symbol)}>
+      {item.symbol} <LineChartOutlined style={{ fontSize: 11 }} />
+    </Button>
+  );
+
+  const renderChartCard = (item: WatchlistItem) => {
+    const quote = quotes[item.symbol];
+    const status = getTargetStatus(item, quote);
+    const alertRules: ChartAlertRule[] = [
+      {
+        type: "below",
+        targetPrice: item.targetBuyPrice,
+        referencePrice: status.currentPrice ?? item.targetBuyPrice,
+        createdAt: item.createdAt,
+      },
+    ];
+
+    return (
+      <div key={item._id || item.symbol} className="chart-stock-card">
+        <div className="chart-stock-card-header">
+          <div className="chart-stock-title">
+            <button type="button" className="chart-stock-symbol" onClick={() => setDrawerSymbol(item.symbol)}>
+              {item.symbol}
+            </button>
+            {status.atTarget && <TargetCapsule />}
+          </div>
+          {renderRemoveButton(item)}
+        </div>
+        <StockChart
+          symbol={item.symbol}
+          height={220}
+          hideToolbar
+          activeRangeOverride={globalTimeRange}
+          chartType={viewMode === "area" ? "area" : "candlestick"}
+          alertRules={alertRules}
+        />
+        <dl className="chart-stock-metrics">
+          <div>
+            <dt>Current Price</dt>
+            <dd>{status.currentPrice != null ? formatUsd(status.currentPrice) : empty}</dd>
+          </div>
+          <div>
+            <dt>Target Buy</dt>
+            <dd>{formatUsd(item.targetBuyPrice)}</dd>
+          </div>
+          <div>
+            <dt>Distance</dt>
+            <dd>{renderDistance(status)}</dd>
+          </div>
+          <div>
+            <dt>Last Day</dt>
+            <dd>{renderLastDay(quote)}</dd>
+          </div>
+        </dl>
+      </div>
+    );
+  };
+
+  const showChartTimeRange = viewMode !== "list" && state.watchlist.length > 0;
+
   return (
-    <div className="page-container">
+    <div className="page-container campaigns-page">
       <div className="page-header">
         <h1>Watchlist</h1>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setAddModal(true)}>
+        <Button
+          type="primary"
+          shape="round"
+          size="large"
+          icon={<PlusOutlined />}
+          className="campaigns-primary-action"
+          onClick={() => setAddModal(true)}>
           Add Stock
         </Button>
       </div>
 
-      {state.watchlist.length === 0 ?
-        <div className="empty-state">
-          <EyeOutlined className="empty-state-icon" />
-          <p className="empty-state-text">Your watchlist is empty. Add stocks you&apos;re waiting to buy.</p>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModal(true)}>
-            Add to Watchlist
-          </Button>
+      {showChartTimeRange && (
+        <div className="stocks-time-range-bar">
+          <TimeRangeFilter value={globalTimeRange} onChange={setGlobalTimeRange} />
         </div>
-      : <Card
-          className="data-table-card"
-          bordered={false}
-          title={
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", gap: 16 }}>
-              <span style={{ color: "#e2e8f0", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                Stocks
-                {viewMode !== "list" && (
-                  <TimeRangeFilter value={globalTimeRange} onChange={setGlobalTimeRange} />
-                )}
-              </span>
+      )}
+
+      {/* The time-range bar stays outside the query container: on phones it is fixed to the viewport. */}
+      <div className="campaigns-container">
+        {state.watchlist.length === 0 ?
+          <div className="empty-state">
+            <EyeOutlined className="empty-state-icon" />
+            <p className="empty-state-text">Your watchlist is empty. Add stocks you&apos;re waiting to buy.</p>
+            <Button
+              type="primary"
+              shape="round"
+              size="large"
+              icon={<PlusOutlined />}
+              className="campaigns-primary-action"
+              onClick={() => setAddModal(true)}>
+              Add to Watchlist
+            </Button>
+          </div>
+        : <section className="campaigns-section" aria-labelledby="watchlist-stocks-title">
+            <div className="campaigns-section-header">
+              <h2 id="watchlist-stocks-title" className="campaigns-section-title">
+                Stocks <span className="campaigns-section-count">{state.watchlist.length}</span>
+              </h2>
               <Segmented
                 options={[
-                  { value: "list", icon: <UnorderedListOutlined /> },
-                  { value: "candlestick", icon: <AppstoreOutlined /> },
-                  { value: "area", icon: <LineChartOutlined /> },
+                  { value: "list", icon: <UnorderedListOutlined />, title: "List" },
+                  { value: "candlestick", icon: <AppstoreOutlined />, title: "Candlestick charts" },
+                  { value: "area", icon: <LineChartOutlined />, title: "Area charts" },
                 ]}
                 value={viewMode}
                 onChange={(v) => setViewMode(v as "list" | "candlestick" | "area")}
               />
             </div>
-          }>
-          {viewMode === "list" ?
-            <Table aria-label="Watchlist stocks" className="min-w-[800px] tabular-nums">
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col">Symbol</TableHead>
-                  <TableHead scope="col" className="text-right">Current Price</TableHead>
-                  <TableHead scope="col" className="text-right">Target Buy</TableHead>
-                  <TableHead scope="col" className="text-right">Distance</TableHead>
-                  <TableHead scope="col">Notes</TableHead>
-                  <TableHead scope="col" className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {state.watchlist.map(item => {
-                  const quote = quotes[item.symbol];
-                  const validQuote = hasValidQuote(quote);
-                  const atTarget = validQuote && quote.currentPrice <= item.targetBuyPrice;
-                  const distance = validQuote ? ((quote.currentPrice - item.targetBuyPrice) / quote.currentPrice) * 100 : null;
 
-                  return (
-                    <TableRow key={item._id ?? item.symbol} className={atTarget ? "gain bg-green-500/5" : undefined}>
-                      <TableCell>
-                        <Button type="link" style={{ fontWeight: 700, padding: 0 }} onClick={() => setDrawerSymbol(item.symbol)}>
-                          {item.symbol}
-                        </Button>
-                      </TableCell>
-                      <TableCell className="text-right">{validQuote ? `$${quote.currentPrice.toFixed(2)}` : "—"}</TableCell>
-                      <TableCell className="text-right font-semibold text-foreground">${item.targetBuyPrice.toFixed(2)}</TableCell>
-                      <TableCell className="text-right">
-                        {atTarget ? <Tag color="green">🎯 At Target!</Tag>
-                          : distance !== null ? <PnLDisplay value={-distance} percentage={-distance} showArrow={false} size="small" prefix="" />
-                          : "—"}
-                      </TableCell>
-                      <TableCell className="min-w-52 max-w-80 whitespace-pre-wrap break-words text-muted-foreground">{item.notes || "—"}</TableCell>
-                      <TableCell className="text-right">
-                        <Popconfirm title="Remove from watchlist?" onConfirm={() => item._id && handleDelete(item._id)}>
-                          <Button
-                            type="text" danger icon={<DeleteOutlined />} size="small"
-                            aria-label={`Remove ${item.symbol} from watchlist`}
-                            style={{ width: 36, height: 36 }}
-                          />
-                        </Popconfirm>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          : <Row gutter={[24, 24]}>
-              {state.watchlist.map((item: WatchlistItem) => {
-                const q = quotes[item.symbol];
-                const validQuote = hasValidQuote(q);
-                const distance = validQuote ? ((q.currentPrice - item.targetBuyPrice) / q.currentPrice) * 100 : null;
-                const alertRules: ChartAlertRule[] = [
-                  {
-                    type: "below",
-                    targetPrice: item.targetBuyPrice,
-                    referencePrice: validQuote ? q.currentPrice : item.targetBuyPrice,
-                    createdAt: item.createdAt,
-                  },
-                ];
+            {viewMode === "list" ?
+              <>
+                <div className="desktop-stock-table campaigns-panel">
+                  <Table aria-label="Watchlist stocks" className="min-w-[760px] tabular-nums">
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead scope="col">Symbol</TableHead>
+                        <TableHead scope="col" className="text-right">
+                          Current Price
+                        </TableHead>
+                        <TableHead scope="col" className="text-right">
+                          Target Buy
+                        </TableHead>
+                        <TableHead scope="col" className="text-right">
+                          Distance
+                        </TableHead>
+                        <TableHead scope="col" className="text-right">
+                          Last Day
+                        </TableHead>
+                        <TableHead scope="col">Notes</TableHead>
+                        <TableHead scope="col" className="text-right">
+                          <span className="sr-only">Actions</span>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {state.watchlist.map((item) => {
+                        const quote = quotes[item.symbol];
+                        const status = getTargetStatus(item, quote);
 
-                return (
-                  <Col key={item._id || item.symbol} xs={24} lg={12}>
-                    <div style={{ background: "#0f1629", border: "1px solid #1e2a3a", overflow: "hidden" }}>
-                      <div
-                        style={{
-                          padding: "12px 16px",
-                          borderBottom: "1px solid #1e2a3a",
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: 12,
-                          alignItems: "center",
-                        }}>
-                        <Space size="small" wrap>
-                          <Button
-                            type="link"
-                            style={{ fontWeight: 700, padding: 0, fontSize: 16 }}
-                            onClick={() => setDrawerSymbol(item.symbol)}>
-                            {item.symbol}
-                          </Button>
-                          {validQuote && q.currentPrice <= item.targetBuyPrice && <Tag color="green">At Target</Tag>}
-                        </Space>
-                        <Space size="small" wrap>
-                          <span style={{ color: "#94a3b8", fontSize: 12 }}>Target ${item.targetBuyPrice.toFixed(2)}</span>
-                          {distance != null && (
-                            <PnLDisplay value={-distance} percentage={-distance} showArrow={false} size="small" prefix="" />
-                          )}
-                          <Popconfirm title="Remove from watchlist?" onConfirm={() => item._id && handleDelete(item._id)}>
-                            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-                          </Popconfirm>
-                        </Space>
-                      </div>
-                      <StockChart
-                        symbol={item.symbol}
-                        height={260}
-                        hideToolbar
-                        activeRangeOverride={globalTimeRange}
-                        chartType={viewMode === "area" ? "area" : "candlestick"}
-                        alertRules={alertRules}
-                      />
-                    </div>
-                  </Col>
-                );
-              })}
-            </Row>
-          }
-        </Card>
-      }
+                        return (
+                          <TableRow key={item._id ?? item.symbol} className={status.atTarget ? "watchlist-row-target" : undefined}>
+                            <TableCell>{renderSymbolButton(item, "stock-symbol-link")}</TableCell>
+                            <TableCell className="text-right">
+                              {status.currentPrice != null ? formatUsd(status.currentPrice) : "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-semibold text-foreground">{formatUsd(item.targetBuyPrice)}</TableCell>
+                            <TableCell className="text-right">{status.atTarget ? <TargetCapsule /> : renderDistance(status)}</TableCell>
+                            <TableCell className="text-right">{renderLastDay(quote)}</TableCell>
+                            <TableCell className="min-w-52 max-w-80 whitespace-pre-wrap break-words text-muted-foreground">
+                              {item.notes || "—"}
+                            </TableCell>
+                            <TableCell className="text-right">{renderRemoveButton(item)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="mobile-stock-cards">
+                  <div className="mobile-stock-list">
+                    {state.watchlist.map((item) => {
+                      const quote = quotes[item.symbol];
+                      const status = getTargetStatus(item, quote);
+
+                      return (
+                        <div key={item._id ?? item.symbol} className="mobile-stock-card">
+                          <div className="mobile-stock-card-header">
+                            <div className="mobile-stock-title">{renderSymbolButton(item, "mobile-stock-symbol stock-symbol-link")}</div>
+                            <div className="mobile-stock-header-actions">
+                              {status.atTarget && <TargetCapsule />}
+                              {renderRemoveButton(item)}
+                            </div>
+                          </div>
+                          <div className="mobile-stock-metrics">
+                            <div>
+                              <span>Current</span>
+                              <strong>{status.currentPrice != null ? formatUsd(status.currentPrice) : "—"}</strong>
+                            </div>
+                            <div>
+                              <span>Target Buy</span>
+                              <strong>{formatUsd(item.targetBuyPrice)}</strong>
+                            </div>
+                            <div>
+                              <span>Distance</span>
+                              <strong>{renderDistance(status)}</strong>
+                            </div>
+                            <div>
+                              <span>Last Day</span>
+                              {renderLastDay(quote, <strong className="neutral">—</strong>)}
+                            </div>
+                          </div>
+                          {item.notes && <p className="mobile-stock-note">{item.notes}</p>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            : <div className="stock-chart-grid">{state.watchlist.map(renderChartCard)}</div>}
+          </section>
+        }
+      </div>
 
       <Modal title="Add to Watchlist" open={addModal} onCancel={() => setAddModal(false)} footer={null} destroyOnClose width={440}>
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>

@@ -19,6 +19,8 @@ const mcpHandler = createMcpHandler(registerPortfolioTools, {
   instructions:
     'Portfolio tools for this Stock Analytics app. Campaigns group holdings; each holding tracks shares bought, ' +
     'cost basis and sell transactions, so "remaining shares" is shares bought minus everything sold. ' +
+    'Fees (e.g. Kraken, PayPal) are stored in dollars: a buy fee is added to cost basis and a sale fee is deducted ' +
+    'from realized P&L; use set_fee to add or correct a fee on an existing buy or sale. ' +
     'Call list_campaigns first to get campaign ids, then get_campaign for holding ids. ' +
     'Write tools mutate the live portfolio database — confirm with the user before recording a purchase or sale.',
 });

@@ -1,22 +1,21 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Card, Statistic, Tag, Spin, Empty, Button } from 'antd';
+import { Spin, Empty, Button } from 'antd';
 import Link from 'next/link';
-import {
-  DollarOutlined,
-  RiseOutlined,
-  FallOutlined,
-  FundOutlined,
-  TrophyOutlined,
-  FolderOutlined,
-} from '@ant-design/icons';
+import { ArrowDownOutlined, ArrowUpOutlined, RightOutlined } from '@ant-design/icons';
 import { useStore } from '@/context/StoreContext';
 import { useStockQuotes } from '@/hooks/useStockQuote';
+import { usePeriodPrices } from '@/hooks/usePeriodPrices';
+import CampaignSummary, { SummaryMetric } from '@/components/campaigns/CampaignSummary';
+import MetaLine from '@/components/shared/MetaLine';
 import PnLDisplay from '@/components/shared/PnLDisplay';
 import StockDetailDrawer from '@/components/charts/StockDetailDrawer';
 import { useRouter } from 'next/navigation';
 import { calculateCampaignStats } from '@/lib/campaignStats';
+import { formatUsd, pluralize } from '@/lib/campaignFormat';
+import { formatAlertDirection, formatAlertTarget } from '@/lib/alertFormat';
+import { annualForStocks, getCostPerShare, getSoldShares, lastDayForStocks } from '@/lib/assets';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface CampaignTableRow {
@@ -35,14 +34,15 @@ export default function DashboardPage() {
   const router = useRouter();
   const [drawerSymbol, setDrawerSymbol] = useState<string | null>(null);
 
+  const allStocks = useMemo(() => state.campaigns.flatMap((campaign) => campaign.stocks), [state.campaigns]);
+
   // Collect all unique symbols across campaigns
-  const allSymbols = useMemo(() => {
-    const symbols = new Set<string>();
-    state.campaigns.forEach((c) => c.stocks.forEach((s) => symbols.add(s.symbol)));
-    return Array.from(symbols);
-  }, [state.campaigns]);
+  const allSymbols = useMemo(() => Array.from(new Set(allStocks.map((stock) => stock.symbol))), [allStocks]);
 
   const { quotes, loading: quotesLoading } = useStockQuotes(allSymbols);
+  const { yearStartPrices, loading: periodPricesLoading } = usePeriodPrices(allSymbols);
+  const quotesPending = allSymbols.length > 0 && quotesLoading && Object.keys(quotes).length === 0;
+  const periodPricesPending = allSymbols.length > 0 && periodPricesLoading && Object.keys(yearStartPrices).length === 0;
 
   // Calculate portfolio-wide stats
   const stats = useMemo(() => {
@@ -54,16 +54,20 @@ export default function DashboardPage() {
     // Cost of every share bought, so a sale doesn't shrink the denominator.
     const totalCostBasis = campaignStats.reduce((sum, stat) => sum + stat.costBasis, 0);
     const totalPnLPercent = totalCostBasis > 0 ? (totalPnL / totalCostBasis) * 100 : 0;
+    const realizedBasis = allStocks.reduce((sum, stock) => sum + getSoldShares(stock) * getCostPerShare(stock), 0);
 
     return {
       totalInvested,
       totalCurrentValue,
       totalRealizedGain,
-      unrealizedGain: totalCurrentValue - totalInvested,
+      totalRealizedPercent: realizedBasis > 0 ? (totalRealizedGain / realizedBasis) * 100 : 0,
       totalPnL,
       totalPnLPercent,
     };
-  }, [state.campaigns, quotes]);
+  }, [state.campaigns, allStocks, quotes]);
+
+  const today = useMemo(() => lastDayForStocks(allStocks, quotes), [allStocks, quotes]);
+  const annual = useMemo(() => annualForStocks(allStocks, quotes, yearStartPrices), [allStocks, quotes, yearStartPrices]);
 
   // Campaign table data
   const campaignData = useMemo<CampaignTableRow[]>(() => {
@@ -83,6 +87,8 @@ export default function DashboardPage() {
     });
   }, [state.campaigns, quotes]);
 
+  const activeAlerts = state.alerts.filter((alert) => !alert.triggered);
+
   if (state.loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
@@ -91,153 +97,146 @@ export default function DashboardPage() {
     );
   }
 
+  // Ordered by time horizon, shortest first; realized gains close the row.
+  const summaryMetrics: SummaryMetric[] = [
+    { label: 'Today', value: today.value, percentage: today.percentage, pending: quotesPending },
+    {
+      label: 'This Year',
+      value: annual.pnl,
+      percentage: annual.pnlPercent,
+      pending: quotesPending || periodPricesPending,
+    },
+    { label: 'Total P&L', value: stats.totalPnL, percentage: stats.totalPnLPercent, pending: quotesPending },
+    { label: 'Realized', value: stats.totalRealizedGain, percentage: stats.totalRealizedPercent },
+  ];
+
   return (
-    <div className="page-container">
+    <div className="page-container campaigns-page campaigns-container">
       <div className="page-header">
-        <h1>Dashboard</h1>
-        <div style={{ fontSize: 13, color: '#64748b' }}>
-          {quotesLoading ? 'Updating prices...' : 'Prices up to date'}
+        <div className="campaign-page-heading">
+          <h1>Dashboard</h1>
+          <p className="campaign-page-subtitle">{quotesLoading ? 'Updating prices…' : 'Prices up to date'}</p>
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="stats-grid animate-in">
-        <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: '#64748b' }}>Total Invested</span>}
-            value={stats.totalInvested}
-            prefix={<DollarOutlined style={{ color: '#3b82f6' }} />}
-            precision={2}
-            valueStyle={{ color: '#e2e8f0' }}
-            formatter={(value) => `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          />
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: '#64748b' }}>Current Value</span>}
-            value={stats.totalCurrentValue}
-            prefix={<FundOutlined style={{ color: '#f5f5f5' }} />}
-            precision={2}
-            valueStyle={{ color: '#e2e8f0' }}
-            formatter={(value) => `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          />
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: '#64748b' }}>Total P&L</span>}
-            value={stats.totalPnL}
-            prefix={stats.totalPnL >= 0 ? <RiseOutlined style={{ color: '#22c55e' }} /> : <FallOutlined style={{ color: '#ef4444' }} />}
-            precision={2}
-            valueStyle={{ color: stats.totalPnL >= 0 ? '#22c55e' : '#ef4444' }}
-            formatter={(value) => `${Number(value) >= 0 ? '+' : ''}$${Math.abs(Number(value)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-            suffix={<span style={{ fontSize: 14 }}>({stats.totalPnLPercent >= 0 ? '+' : ''}{stats.totalPnLPercent.toFixed(1)}%)</span>}
-          />
-        </Card>
-        <Card className="stat-card" bordered={false}>
-          <Statistic
-            title={<span style={{ color: '#64748b' }}>Realized Gains</span>}
-            value={stats.totalRealizedGain}
-            prefix={<TrophyOutlined style={{ color: '#f59e0b' }} />}
-            precision={2}
-            valueStyle={{ color: stats.totalRealizedGain >= 0 ? '#22c55e' : '#ef4444' }}
-            formatter={(value) => `${Number(value) >= 0 ? '+' : ''}$${Math.abs(Number(value)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          />
-        </Card>
-      </div>
+      <CampaignSummary
+        label="Total in Stocks"
+        value={stats.totalCurrentValue}
+        pending={quotesPending}
+        detail={`Invested ${formatUsd(stats.totalInvested)}`}
+        metrics={summaryMetrics}
+      />
 
-      {/* Active Alerts Summary */}
-      {state.alerts.filter((a) => !a.triggered).length > 0 && (
-        <Card
-          title={<span style={{ color: '#e2e8f0' }}>🔔 Active Alerts</span>}
-          bordered={false}
-          style={{ marginBottom: 24 }}
-          extra={
-            <Button type="link" onClick={() => router.push('/alerts')}>
+      {activeAlerts.length > 0 && (
+        <section className="campaigns-section" aria-labelledby="dashboard-alerts-title">
+          <div className="campaigns-section-header">
+            <h2 id="dashboard-alerts-title" className="campaigns-section-title">
+              Active Alerts <span className="campaigns-section-count">{activeAlerts.length}</span>
+            </h2>
+            <Button type="text" onClick={() => router.push('/alerts')}>
               View All
             </Button>
-          }
-        >
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {state.alerts
-              .filter((a) => !a.triggered)
-              .slice(0, 6)
-              .map((alert) => (
-                <Tag
-                  key={alert._id}
-                  color={alert.type === 'above' ? 'green' : 'red'}
-                  style={{ padding: '4px 12px', fontSize: 13 }}
-                >
-                  {alert.symbol} {alert.type === 'above' ? '↑' : '↓'}{' '}
-                  {alert.targetPrice != null ? `$${alert.targetPrice}` : `${alert.targetPercent}%`}
-                </Tag>
-              ))}
           </div>
-        </Card>
+          <div className="money-location-grid">
+            {activeAlerts.slice(0, 6).map((alert) => (
+              <div key={alert._id ?? `${alert.symbol}-${alert.createdAt}`} className="money-location-tile">
+                <div className="money-location-tile-name">
+                  <strong>{alert.symbol}</strong>
+                  <span className="alert-condition">
+                    {alert.type === 'above' ? <ArrowUpOutlined aria-hidden /> : <ArrowDownOutlined aria-hidden />}
+                    {formatAlertDirection(alert.type)}
+                  </span>
+                </div>
+                <div className="money-location-tile-count">
+                  <strong>{formatAlertTarget(alert)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
 
-      {/* Campaign Table */}
-      <Card
-        className="data-table-card"
-        title={
-          <span style={{ color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <FolderOutlined /> Campaigns Overview
-          </span>
-        }
-        bordered={false}
-        extra={
-          <Button type="primary" onClick={() => router.push('/campaigns')}>
-            Manage Campaigns
+      <section className="campaigns-section" aria-labelledby="dashboard-campaigns-title">
+        <div className="campaigns-section-header">
+          <h2 id="dashboard-campaigns-title" className="campaigns-section-title">
+            Campaigns {campaignData.length > 0 && <span className="campaigns-section-count">{campaignData.length}</span>}
+          </h2>
+          <Button type="text" onClick={() => router.push('/campaigns')}>
+            Manage
           </Button>
-        }
-      >
+        </div>
+
         {campaignData.length === 0 ? (
-          <Empty
-            description={<span style={{ color: '#64748b' }}>No campaigns yet. Create your first campaign!</span>}
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          />
+          <div className="campaigns-panel campaigns-panel-padded">
+            <Empty
+              description={<span style={{ color: 'var(--text-secondary)' }}>No campaigns yet. Create your first campaign!</span>}
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          </div>
         ) : (
-          <Table aria-label="Campaigns overview" className="min-w-[760px] tabular-nums">
-            <TableHeader>
-              <TableRow>
-                <TableHead scope="col">Campaign</TableHead>
-                <TableHead scope="col" className="text-right">Stocks</TableHead>
-                <TableHead scope="col" className="text-right">Invested</TableHead>
-                <TableHead scope="col" className="text-right">Current Value</TableHead>
-                <TableHead scope="col" className="text-right">P&amp;L</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {campaignData.map(record => (
-                <TableRow
-                  key={record.key}
-                  className="cursor-pointer"
-                  onClick={() => router.push(`/campaigns/${record.key}`)}
-                >
-                  <TableCell className="min-w-44 max-w-72 whitespace-normal break-words font-semibold">
-                    <Link
-                      href={`/campaigns/${record.key}`}
-                      className="text-foreground hover:underline focus-visible:underline"
-                      onClick={event => event.stopPropagation()}
+          <>
+            <div className="campaigns-panel desktop-table">
+              <Table aria-label="Campaigns overview" className="min-w-[640px] tabular-nums">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">Campaign</TableHead>
+                    <TableHead scope="col" className="text-right">Stocks</TableHead>
+                    <TableHead scope="col" className="text-right">Invested</TableHead>
+                    <TableHead scope="col" className="text-right">In Stocks</TableHead>
+                    <TableHead scope="col" className="text-right">P&amp;L</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {campaignData.map(record => (
+                    <TableRow
+                      key={record.key}
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/campaigns/${record.key}`)}
                     >
-                      {record.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-right"><Tag color="blue" style={{ marginInlineEnd: 0 }}>{record.stocks}</Tag></TableCell>
-                  <TableCell className="text-right">
-                    ${record.invested.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    ${record.currentValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <PnLDisplay value={record.pnl} percentage={record.pnlPercent} />
-                  </TableCell>
-                </TableRow>
+                      <TableCell className="min-w-44 max-w-72 whitespace-normal break-words">
+                        <Link
+                          href={`/campaigns/${record.key}`}
+                          className="table-symbol table-link"
+                          onClick={event => event.stopPropagation()}
+                        >
+                          {record.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-right">{record.stocks}</TableCell>
+                      <TableCell className="text-right">{formatUsd(record.invested)}</TableCell>
+                      <TableCell className="text-right">{formatUsd(record.currentValue)}</TableCell>
+                      <TableCell className="text-right">
+                        <PnLDisplay value={record.pnl} percentage={record.pnlPercent} size="small" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <ul className="grouped-list mobile-list" aria-label="Campaigns overview">
+              {campaignData.map((record) => (
+                <li key={record.key}>
+                  <Link href={`/campaigns/${record.key}`} className="grouped-list-row">
+                    <div className="grouped-list-main">
+                      <span className="grouped-list-title">{record.name}</span>
+                      <MetaLine
+                        parts={[pluralize(record.stocks, 'stock'), `Invested ${formatUsd(record.invested, 0)}`]}
+                        className="grouped-list-subtitle"
+                      />
+                    </div>
+                    <div className="grouped-list-trailing">
+                      <span className="grouped-list-value">{formatUsd(record.currentValue, 0)}</span>
+                      <PnLDisplay value={record.pnl} percentage={record.pnlPercent} size="small" />
+                    </div>
+                    <RightOutlined className="grouped-list-chevron" aria-hidden />
+                  </Link>
+                </li>
               ))}
-            </TableBody>
-          </Table>
+            </ul>
+          </>
         )}
-      </Card>
+      </section>
 
       <StockDetailDrawer
         symbol={drawerSymbol}

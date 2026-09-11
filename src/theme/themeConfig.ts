@@ -20,6 +20,10 @@ const theme: ThemeConfig = {
     // Success / Error (green for gains, red for losses)
     colorSuccess: '#22c55e',
     colorError: '#ef4444',
+    // Without a dark algorithm antd derives these from its light palette, which puts a pale pink
+    // square behind danger text buttons (delete icons) on hover and press.
+    colorErrorBg: 'rgba(239, 68, 68, 0.14)',
+    colorErrorBgActive: 'rgba(239, 68, 68, 0.22)',
     colorWarning: '#f59e0b',
     colorInfo: '#3b82f6',
 

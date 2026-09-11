@@ -6,6 +6,7 @@ const TransactionSchema = new Schema({
   type:        { type: String, enum: ['sell'], default: 'sell' },
   shares:      { type: Number, required: true },
   price:       { type: Number, required: true },
+  fee:         { type: Number, default: 0, min: 0 },
   date:        { type: Date, default: Date.now },
   percentSold: { type: Number, required: true },
 });
@@ -22,6 +23,7 @@ const CampaignStockSchema = new Schema({
   symbol:       { type: String, required: true },
   shares:       { type: Number, required: true },
   buyPrice:     { type: Number, required: true },
+  buyFee:       { type: Number, default: 0, min: 0 },
   buyDate:      { type: Date, default: Date.now },
   locationId:   { type: Schema.Types.ObjectId },
   isStarred:    { type: Boolean, default: false },
@@ -53,6 +55,7 @@ export interface ICampaign extends Document {
     symbol: string;
     shares: number;
     buyPrice: number;
+    buyFee?: number;
     buyDate: Date;
     locationId: mongoose.Types.ObjectId;
     isStarred?: boolean;
@@ -62,6 +65,7 @@ export interface ICampaign extends Document {
       type: string;
       shares: number;
       price: number;
+      fee?: number;
       date: Date;
       percentSold: number;
     }>;

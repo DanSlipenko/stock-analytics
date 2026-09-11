@@ -488,7 +488,7 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
         chart.timeScale().fitContent();
         requestAnimationFrame(updateTradeOverlays);
         cleanupComparison = attachChartComparison(
-          containerRef.current, chart, mainSeries, candles, setComparison,
+          containerRef.current, chart, mainSeries, candles, candle => candle.close, setComparison,
           active => {
             comparingRef.current = active;
             dragStartRef.current = null;

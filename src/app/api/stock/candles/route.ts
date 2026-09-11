@@ -110,11 +110,19 @@ export async function GET(request: NextRequest) {
     );
 
     if (!res.ok) {
-      if (res.status === 404) {
+      // Yahoo explains failures in a `chart.error` body. A 404 is an unknown or
+      // delisted symbol; a 400 "Data doesn't exist" is a window with no bars in
+      // it, e.g. a year-start lookup for a symbol that listed after Jan 1.
+      const description: string = await res
+        .json()
+        .then((body) => body?.chart?.error?.description ?? '')
+        .catch(() => '');
+
+      if (res.status === 404 || description.startsWith("Data doesn't exist")) {
         return NextResponse.json({ candles: [], status: 'no_data' });
       }
 
-      throw new Error(`Yahoo Finance API error: ${res.status}`);
+      throw new Error(`Yahoo Finance API error: ${res.status}${description ? ` (${description})` : ''}`);
     }
 
     const data = await res.json();
