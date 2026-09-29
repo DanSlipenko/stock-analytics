@@ -4,7 +4,7 @@
  * handler deletes every cache that doesn't carry the current version.
  */
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const SHELL_CACHE = `stockpulse-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `stockpulse-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `stockpulse-pages-${CACHE_VERSION}`;
@@ -158,6 +158,9 @@ self.addEventListener('fetch', (event) => {
   // Next.js client-side navigation payloads are tied to a specific build ID —
   // serving a stale one breaks hydration, so never cache them.
   if (request.headers.get('RSC') === '1' || url.searchParams.has('_rsc')) return;
+
+  // Tax plans must reflect current MCP/browser edits and must not persist in offline caches.
+  if (url.pathname.startsWith('/api/tax-plans')) return;
 
   if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(request, STATIC_CACHE));

@@ -17,6 +17,7 @@ import {
   normalizeName,
 } from '@/lib/assets';
 import type { Campaign, CampaignStock } from '@/types';
+import { registerTaxTools } from './tax-tools';
 
 /** Mongoose lean docs carry Dates and ObjectIds; the app's types expect strings. */
 function serialize<T>(doc: unknown): T {
@@ -120,6 +121,7 @@ async function saveStocks(campaignId: string, stocks: CampaignStock[]) {
 }
 
 export function registerPortfolioTools(server: McpServer) {
+  registerTaxTools(server);
   // ---- Read ----
 
   server.registerTool(

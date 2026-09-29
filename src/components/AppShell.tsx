@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Layout, Menu, Drawer, Button } from "antd";
-import { DashboardOutlined, FolderOutlined, EyeOutlined, BellOutlined, WalletOutlined, MenuOutlined } from "@ant-design/icons";
+import { DashboardOutlined, FolderOutlined, EyeOutlined, BellOutlined, WalletOutlined, MenuOutlined, CalculatorOutlined } from "@ant-design/icons";
 import { usePathname, useRouter } from "next/navigation";
 import NotificationBell from "@/components/shared/NotificationBell";
 import RefreshButton from "@/components/shared/RefreshButton";
@@ -36,6 +36,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       key: "/assets",
       icon: <WalletOutlined />,
       label: "Assets",
+    },
+    {
+      key: "/taxes",
+      icon: <CalculatorOutlined />,
+      label: "Tax Planning",
     },
     {
       key: "/watchlist",

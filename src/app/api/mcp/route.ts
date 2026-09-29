@@ -15,14 +15,17 @@ function isValidToken(candidate: string) {
 }
 
 const mcpHandler = createMcpHandler(registerPortfolioTools, {
-  serverInfo: { name: 'stock-analytics', version: '1.0.0' },
+  serverInfo: { name: 'stock-analytics', version: '1.1.0' },
   instructions:
     'Portfolio tools for this Stock Analytics app. Campaigns group holdings; each holding tracks shares bought, ' +
     'cost basis and sell transactions, so "remaining shares" is shares bought minus everything sold. ' +
     'Fees (e.g. Kraken, PayPal) are stored in dollars: a buy fee is added to cost basis and a sale fee is deducted ' +
     'from realized P&L; use set_fee to add or correct a fee on an existing buy or sale. ' +
     'Call list_campaigns first to get campaign ids, then get_campaign for holding ids. ' +
-    'Write tools mutate the live portfolio database — confirm with the user before recording a purchase or sale.',
+    'Write tools mutate the live portfolio database — confirm with the user before recording a purchase or sale. ' +
+    'Tax planning: get_tax_plan returns income, business expenses, projections, property/deduction scenarios and a revision. ' +
+    'Use update_tax_plan for requested changes with that revision; preview_tax_plan estimates without saving. ' +
+    'Read the returned calculation assumptions. Unsold gains are excluded, and 2027 uses provisional 2026 parameters.',
 });
 
 // The tools write to the live portfolio database, so an unset token fails closed
