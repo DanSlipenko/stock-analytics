@@ -1,9 +1,9 @@
 'use client';
 
 import { useId, type ReactNode } from 'react';
-import { Button, Popconfirm } from 'antd';
+import { Button, Popconfirm, Segmented } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
-import { ChevronRight, Pencil } from 'lucide-react';
+import { CalendarDays, ChevronRight, Pencil } from 'lucide-react';
 import MetaLine from '@/components/shared/MetaLine';
 import { cn } from '@/lib/utils';
 
@@ -148,6 +148,19 @@ export function Empty({
   );
 }
 
+/** Opens the twelve-month projected / actual editor for a payer or a recurring cost. */
+function MonthsButton({ name, onClick }: { name: string; onClick: (event: React.MouseEvent) => void }) {
+  return (
+    <Button
+      type="text"
+      icon={<CalendarDays size={15} />}
+      aria-label={`Edit ${name} by month`}
+      title="Edit by month"
+      onClick={onClick}
+    />
+  );
+}
+
 /** One editable entry in an inset list: title and details, an amount, then edit and delete. */
 export function ListRow({
   title,
@@ -158,6 +171,7 @@ export function ListRow({
   saving,
   onEdit,
   onDelete,
+  onMonths,
 }: {
   title: string;
   projected: boolean;
@@ -168,6 +182,7 @@ export function ListRow({
   saving: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  onMonths?: () => void;
 }) {
   return (
     <li className="tax-list-row">
@@ -180,6 +195,7 @@ export function ListRow({
       </div>
       <span className="tax-list-value">{value}</span>
       <div className="tax-row-actions">
+        {onMonths && <MonthsButton name={name} onClick={onMonths} />}
         <Button type="text" icon={<Pencil size={15} />} aria-label={`Edit ${name}`} onClick={onEdit} />
         <Popconfirm
           title="Delete this entry?"
@@ -202,12 +218,14 @@ export function ListGroup({
   projected,
   meta,
   value,
+  onMonths,
   children,
 }: {
   title: string;
   projected: number;
   meta: string[];
   value: string;
+  onMonths?: () => void;
   children: ReactNode;
 }) {
   return (
@@ -222,7 +240,19 @@ export function ListGroup({
             <MetaLine className="tax-list-meta" parts={meta} />
           </div>
           <span className="tax-list-value">{value}</span>
-          <ChevronRight className="tax-group-chevron" size={18} aria-hidden="true" />
+          <span className="tax-row-actions">
+            {onMonths && (
+              <MonthsButton
+                name={title}
+                onClick={(event) => {
+                  // Inside <summary>: open the editor without also expanding the group.
+                  event.preventDefault();
+                  onMonths();
+                }}
+              />
+            )}
+            <ChevronRight className="tax-group-chevron" size={18} aria-hidden="true" />
+          </span>
         </summary>
         <ul className="tax-group-rows">{children}</ul>
       </details>
@@ -311,6 +341,35 @@ export function MoneyField({
       </div>
       {hint && <small id={id}>{hint}</small>}
     </label>
+  );
+}
+
+/** Marks one month's amount as projected (expected) or actual (already received or paid). */
+export function StatusPicker({
+  value,
+  label,
+  disabled,
+  onChange,
+}: {
+  value: 'projected' | 'actual';
+  label: string;
+  disabled?: boolean;
+  onChange: (value: 'projected' | 'actual') => void;
+}) {
+  return (
+    <Segmented<'projected' | 'actual'>
+      size="small"
+      block
+      className="tax-status-picker"
+      aria-label={label}
+      disabled={disabled}
+      options={[
+        { label: 'Projected', value: 'projected' },
+        { label: 'Actual', value: 'actual' },
+      ]}
+      value={value}
+      onChange={onChange}
+    />
   );
 }
 

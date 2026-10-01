@@ -23,7 +23,9 @@ const mcpHandler = createMcpHandler(registerPortfolioTools, {
     'from realized P&L; use set_fee to add or correct a fee on an existing buy or sale. ' +
     'Call list_campaigns first to get campaign ids, then get_campaign for holding ids. ' +
     'Write tools mutate the live portfolio database — confirm with the user before recording a purchase or sale. ' +
-    'Tax planning: get_tax_plan returns income, business expenses, projections, property/deduction scenarios and a revision. ' +
+    'Tax planning: get_tax_plan returns income, business expenses, projections, property/deduction scenarios, a revision ' +
+    'and a month-by-month breakdown (income, business expenses, net, estimated tax, after-tax). Each income or expense entry ' +
+    'is a full-year total (month 0) or one month (1–12), and holds one amount marked "projected" or "actual". ' +
     'Use update_tax_plan for requested changes with that revision; preview_tax_plan estimates without saving. ' +
     'Read the returned calculation assumptions. Unsold gains are excluded, and 2027 uses provisional 2026 parameters.',
 });

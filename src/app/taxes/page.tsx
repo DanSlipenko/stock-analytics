@@ -28,12 +28,16 @@ import Scenarios from '@/components/tax/Scenarios';
 import IncomeEditor from '@/components/tax/IncomeEditor';
 import ProfileEditor from '@/components/tax/ProfileEditor';
 import ScenarioEditor from '@/components/tax/ScenarioEditor';
+import { ExpenseMonths, IncomeMonths } from '@/components/tax/MonthEditor';
+import MonthView from '@/components/tax/MonthView';
 import './taxes.css';
 
 type Context = { plan: TaxPlan; portfolio: TaxPortfolio };
 type Editor =
   | { type: 'income'; entry?: IncomeEntry; forecastMonth?: number }
   | { type: 'expense'; entry?: ExpenseEntry }
+  | { type: 'months'; list: 'income' | 'expenses'; key: string }
+  | { type: 'month'; month: number }
   | { type: 'profile' }
   | { type: 'scenario'; kind: 'rental' | 'deduction'; scenario?: TaxScenario };
 const TABS = ['Overview', 'Income', 'Stocks', 'Scenarios'] as const;
@@ -264,15 +268,25 @@ export default function TaxesPage() {
       <ErrorNotice error={error} />
 
       <Summary
-        hero={{
-          label: 'Estimated Federal Tax',
-          value: usd(planned.federalTax),
-          detail: [
-            `${percent(planned.effectiveRate)} effective`,
-            `${percent(planned.marginalRate)} bracket`,
-            ...(plan.profile.stateRate !== null ? [`${usd(planned.totalTax)} with state`] : []),
-          ].join(' · '),
-        }}
+        hero={
+          // With a state rate set, the headline is federal and state together, split out underneath.
+          plan.profile.stateRate === null
+            ? {
+                label: 'Estimated Federal Tax',
+                value: usd(planned.federalTax),
+                detail: `${percent(planned.effectiveRate)} effective · ${percent(planned.marginalRate)} bracket`,
+              }
+            : {
+                label: 'Estimated Tax · Federal + State',
+                value: usd(planned.totalTax),
+                detail: [
+                  `Federal ${usd(planned.federalTax)}`,
+                  `${plan.profile.stateName || 'State'} ${usd(planned.stateTax)}`,
+                  `${percent(planned.agi > 0 ? planned.totalTax / planned.agi : 0)} effective`,
+                  `${percent(planned.marginalRate)} federal bracket`,
+                ].join(' · '),
+              }
+        }
         cells={[
           { label: 'Taxable Income', value: usd(planned.taxableIncome), detail: `AGI ${usd(planned.agi)}` },
           { label: 'Withheld & Paid', value: usd(planned.payments), detail: 'Withholding and estimated payments' },
@@ -313,10 +327,7 @@ export default function TaxesPage() {
             estimate={planned}
             includeProjected={includeProjected}
             onAddIncome={() => setEditor({ type: 'income' })}
-            onMonth={(m) => {
-              setMonth(m);
-              setTab('Income');
-            }}
+            onMonth={(m) => setEditor({ type: 'month', month: m })}
           />
         )}
         {tab === 'Income' && (
@@ -335,6 +346,10 @@ export default function TaxesPage() {
               }
               onEdit={(entry) => setEditor({ type: 'income', entry })}
               onDelete={(entry) => void act({ action: 'deleteIncome', id: entry.id })}
+              onMonths={(key) => setEditor({ type: 'months', list: 'income', key })}
+              onEditMonth={() =>
+                setEditor({ type: 'month', month: month > 0 ? month : Math.min(12, new Date().getMonth() + 1) })
+              }
             />
             <ExpenseList
               plan={plan}
@@ -343,6 +358,7 @@ export default function TaxesPage() {
               onAdd={() => setEditor({ type: 'expense' })}
               onEdit={(entry) => setEditor({ type: 'expense', entry })}
               onDelete={(entry) => void act({ action: 'deleteExpense', id: entry.id })}
+              onMonths={(key) => setEditor({ type: 'months', list: 'expenses', key })}
             />
             <PlanAhead
               year={year}
@@ -433,6 +449,25 @@ export default function TaxesPage() {
           onClose={() => setEditor(null)}
           onSave={(entries) => save({ action: 'expenses', entries })}
         />
+      )}
+      {editor?.type === 'months' &&
+        (editor.list === 'income' ? (
+          <IncomeMonths
+            plan={plan}
+            groupKey={editor.key}
+            onClose={() => setEditor(null)}
+            onSave={(entries, remove) => save({ action: 'income', entries, remove })}
+          />
+        ) : (
+          <ExpenseMonths
+            plan={plan}
+            groupKey={editor.key}
+            onClose={() => setEditor(null)}
+            onSave={(entries, remove) => save({ action: 'expenses', entries, remove })}
+          />
+        ))}
+      {editor?.type === 'month' && (
+        <MonthView plan={plan} estimate={planned} month={editor.month} onClose={() => setEditor(null)} onSave={save} />
       )}
       {editor?.type === 'profile' && (
         <ProfileEditor

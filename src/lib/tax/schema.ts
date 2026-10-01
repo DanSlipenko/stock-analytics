@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { incomeKey } from './monthly';
 
 export const taxYearSchema = z.number().int().min(2025).max(2027);
 export const filingStatusSchema = z.enum(['single', 'joint', 'separate', 'head']);
@@ -216,9 +217,10 @@ export const planSchema = z
       if (new Set(plan[key].map((r) => r.id)).size !== plan[key].length)
         ctx.addIssue({ code: 'custom', message: `Duplicate ${key} IDs.` });
     }
+    // Each month holds one amount per payer, projected or actual; a full-year total covers every month.
     const groups = new Map<string, number[]>();
     for (const entry of plan.income) {
-      const key = `${entry.owner}|${entry.kind}|${entry.source.trim().toLowerCase()}`;
+      const key = incomeKey(entry);
       const months = groups.get(key) || [];
       if (months.includes(entry.month) || (months.length && (entry.month === 0 || months.includes(0)))) {
         ctx.addIssue({
@@ -249,6 +251,11 @@ export const planSchema = z
         });
     }
   });
+const removeIds = z
+  .array(id)
+  .max(500)
+  .optional()
+  .describe('IDs to delete in the same save, e.g. a full-year total being replaced by monthly entries.');
 export const mutationSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('profile'),
@@ -258,20 +265,29 @@ export const mutationSchema = z.discriminatedUnion('action', [
     action: z.literal('income'),
     entries: z
       .array(incomeSchema)
-      .min(1)
       .max(500)
       .describe('Entries to add, or to replace in full when the ID already exists.'),
+    remove: removeIds,
   }),
   z.object({ action: z.literal('deleteIncome'), id }),
   z.object({
     action: z.literal('expenses'),
     entries: z
       .array(expenseSchema)
-      .min(1)
       .max(500)
       .describe('Business expenses to add, or to replace in full when the ID already exists.'),
+    remove: removeIds,
   }),
   z.object({ action: z.literal('deleteExpense'), id }),
+  z
+    .object({
+      action: z.literal('entries'),
+      income: z.array(incomeSchema).max(500).optional().describe('Income entries to add or replace by ID.'),
+      removeIncome: removeIds,
+      expenses: z.array(expenseSchema).max(500).optional().describe('Business expenses to add or replace by ID.'),
+      removeExpenses: removeIds,
+    })
+    .describe('Income and business expense changes saved together, e.g. one month’s figures.'),
   z.object({
     action: z.literal('scenario'),
     scenario: scenarioSchema.describe('A complete scenario; an existing ID is replaced in full.'),
@@ -302,20 +318,24 @@ export function emptyPlan(year: number): TaxPlan {
   return planSchema.parse({ year });
 }
 
+/** Removes the named IDs, then adds each entry or replaces the one with its ID. */
+function upsert<T extends { id: string }>(current: T[], entries: T[] = [], remove: string[] = []) {
+  const removed = new Set(remove);
+  const byId = new Map(current.filter((r) => !removed.has(r.id)).map((r) => [r.id, r]));
+  entries.forEach((r) => byId.set(r.id, r));
+  return [...byId.values()];
+}
+
 export function applyMutation(plan: TaxPlan, mutation: PlanMutation): TaxPlan {
   const next = structuredClone(plan);
   if (mutation.action === 'profile') next.profile = { ...next.profile, ...mutation.profile };
-  if (mutation.action === 'income') {
-    const entries = new Map(next.income.map((r) => [r.id, r]));
-    mutation.entries.forEach((r) => entries.set(r.id, r));
-    next.income = [...entries.values()];
+  if (mutation.action === 'income') next.income = upsert(next.income, mutation.entries, mutation.remove);
+  if (mutation.action === 'entries') {
+    next.income = upsert(next.income, mutation.income, mutation.removeIncome);
+    next.expenses = upsert(next.expenses, mutation.expenses, mutation.removeExpenses);
   }
   if (mutation.action === 'deleteIncome') next.income = next.income.filter((r) => r.id !== mutation.id);
-  if (mutation.action === 'expenses') {
-    const entries = new Map(next.expenses.map((r) => [r.id, r]));
-    mutation.entries.forEach((r) => entries.set(r.id, r));
-    next.expenses = [...entries.values()];
-  }
+  if (mutation.action === 'expenses') next.expenses = upsert(next.expenses, mutation.entries, mutation.remove);
   if (mutation.action === 'deleteExpense') next.expenses = next.expenses.filter((r) => r.id !== mutation.id);
   if (mutation.action === 'scenario')
     next.scenarios = [...next.scenarios.filter((r) => r.id !== mutation.scenario.id), mutation.scenario];

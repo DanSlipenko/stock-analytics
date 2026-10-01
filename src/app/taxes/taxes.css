@@ -452,6 +452,7 @@
 }
 
 .tax-month {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -472,6 +473,77 @@
   color: var(--text-primary);
 }
 
+/* Hover / focus card with the month's figures. The panel clips overflow, so it
+   sits over the top of the bars rather than above the chart. */
+.tax-month-tip {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  z-index: 2;
+  display: grid;
+  gap: 3px;
+  min-width: 156px;
+  padding: 9px 11px;
+  border: 1px solid var(--campaigns-edge-hover);
+  border-radius: 10px;
+  background: var(--campaigns-surface-hover);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition:
+    opacity 0.12s ease,
+    visibility 0.12s;
+}
+
+.tax-month-tip-start {
+  left: 0;
+  transform: none;
+}
+
+.tax-month-tip-end {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+.tax-month-tip strong {
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tax-month-tip > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tax-month-tip b {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.tax-month:hover .tax-month-tip,
+.tax-month:focus-visible .tax-month-tip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* A tap opens the month's entries, so phones read the figures from the table instead. */
+@media (hover: none) {
+  .tax-month-tip {
+    display: none;
+  }
+}
+
 .tax-month:focus-visible {
   outline: 2px solid var(--campaigns-focus);
   outline-offset: 1px;
@@ -480,23 +552,111 @@
 .tax-month-bars {
   display: flex;
   flex: 1;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 3px;
+  flex-direction: column;
   width: 100%;
+}
+
+/* Above the baseline: income. Below it: business expenses, or losses. Each
+   side's flex-grow is its largest month, so both sides share one scale. */
+.tax-month-up,
+.tax-month-down {
+  display: flex;
+  flex-basis: 0;
+  justify-content: center;
+  min-height: 0;
+}
+
+.tax-month-up {
+  align-items: flex-end;
   border-bottom: 1px solid var(--campaigns-separator);
 }
 
-.tax-month-bars i {
-  display: block;
-  flex: 1;
-  max-width: 20px;
+.tax-month-down {
+  align-items: flex-start;
+}
+
+/* Actual sits against the baseline and projected extends past it, with a
+   2px surface gap between them. */
+.tax-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  width: 60%;
+  max-width: 28px;
+  overflow: hidden;
   border-radius: 4px 4px 0 0;
 }
 
-.tax-month-bars i.tax-bar-negative {
-  border-color: var(--loss);
-  background: var(--loss);
+.tax-month-down .tax-stack {
+  flex-direction: column;
+  border-radius: 0 0 4px 4px;
+}
+
+.tax-stack > i {
+  display: block;
+  flex-basis: 0;
+  min-height: 1px;
+}
+
+.tax-stack > i.tax-bar-projected {
+  border-radius: inherit;
+}
+
+/* Money out reads dimmer than money in; a loss stays red, as everywhere else. */
+.tax-bar-out {
+  --tax-bar: rgba(226, 232, 240, 0.42);
+  --tax-bar-muted: rgba(226, 232, 240, 0.2);
+}
+
+.tax-bar-loss {
+  --tax-bar: var(--loss);
+  --tax-bar-muted: rgba(239, 68, 68, 0.4);
+}
+
+.tax-month-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tax-month-table th,
+.tax-month-table td {
+  padding: 9px 0 9px 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.tax-month-table :is(th, td):first-child {
+  padding-left: 0;
+  text-align: left;
+}
+
+.tax-month-table thead th {
+  padding-top: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.tax-month-table tbody th {
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.tax-month-table td {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.tax-month-table tbody tr {
+  border-top: 1px solid var(--campaigns-separator);
+}
+
+.tax-month-table .tax-total-row :is(th, td) {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 /* ---- Lists: income entries, positions, sales ---- */
@@ -863,7 +1023,8 @@
   color: var(--text-secondary);
 }
 
-.tax-field :is(input, select, textarea) {
+.tax-field :is(input, select, textarea),
+.tax-inputs :is(input, select) {
   width: 100%;
   min-height: 40px;
   padding: 8px 11px;
@@ -877,7 +1038,8 @@
   transition: border-color 0.15s ease;
 }
 
-.tax-field select {
+.tax-field select,
+.tax-inputs select {
   padding-right: 28px;
 }
 
@@ -885,18 +1047,21 @@
   resize: vertical;
 }
 
-.tax-field :is(input, select, textarea):hover {
+.tax-field :is(input, select, textarea):hover,
+.tax-inputs :is(input, select):hover:not(:disabled) {
   border-color: rgba(245, 245, 245, 0.5);
 }
 
-.tax-field :is(input, select, textarea):focus-visible {
+.tax-field :is(input, select, textarea):focus-visible,
+.tax-inputs :is(input, select):focus-visible {
   border-color: var(--accent);
   outline: none;
   box-shadow: 0 0 0 2px rgba(245, 245, 245, 0.12);
 }
 
 .tax-field input::placeholder,
-.tax-field textarea::placeholder {
+.tax-field textarea::placeholder,
+.tax-inputs input::placeholder {
   color: #64748b;
 }
 
@@ -915,6 +1080,195 @@
 
 .tax-money-input > input {
   padding-left: 26px;
+}
+
+/* ---- Month editors: one payer across the year, and one month across payers ---- */
+.tax-inputs input:disabled {
+  opacity: 0.35;
+}
+
+.tax-grid {
+  width: 100%;
+  margin-bottom: 12px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.tax-grid th,
+.tax-grid td {
+  padding: 3px 0 3px 8px;
+}
+
+.tax-grid :is(th, td):first-child {
+  width: 48px;
+  padding-left: 0;
+}
+
+.tax-grid thead th {
+  padding-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.tax-grid tbody th {
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.tax-grid abbr {
+  text-decoration: none;
+}
+
+.tax-grid input {
+  min-height: 36px;
+  padding-block: 6px;
+}
+
+.tax-grid tfoot :is(th, td) {
+  padding-top: 10px;
+  border-top: 1px solid var(--campaigns-separator);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.tax-grid tfoot td {
+  padding-left: 20px;
+}
+
+.tax-grid-fill {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tax-grid-fill > .tax-money-input {
+  flex: 0 1 180px;
+}
+
+.tax-month-view-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tax-month-view-title > span {
+  min-width: 150px;
+  text-align: center;
+}
+
+.tax-month-lines {
+  list-style: none;
+  margin-top: 8px;
+}
+
+.tax-month-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px 190px;
+  align-items: center;
+  gap: 8px;
+  padding-block: 8px;
+}
+
+.tax-month-line + .tax-month-line {
+  border-top: 1px solid var(--campaigns-separator);
+}
+
+.tax-month-line-head {
+  padding-block: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.tax-month-line-head > span:first-child {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tax-month-line-name {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.tax-month-line-name strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.tax-month-line-name small {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Two equal halves, each label centred in its own. */
+.tax-status-picker {
+  min-width: 186px;
+}
+
+.tax-status-picker .ant-segmented-item-label {
+  text-align: center;
+}
+
+.tax-month-line-pickers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tax-month-line-pickers select {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.tax-month-line-pickers select + select {
+  flex: 0 0 96px;
+}
+
+.tax-month-lines + .ant-btn {
+  margin: 0 0 12px -8px;
+}
+
+.tax-result-heading small {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.tax-rows dt small {
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .tax-month-line {
+    grid-template-columns: minmax(0, 1fr) 190px;
+  }
+
+  .tax-month-line-name,
+  .tax-month-line-head > span:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .tax-grid :is(th, td) {
+    padding-left: 4px;
+  }
+
+  .tax-grid :is(th, td):first-child {
+    width: 36px;
+  }
 }
 
 .tax-check {
@@ -951,6 +1305,15 @@
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--campaigns-separator);
+}
+
+/* Long editors scroll; Save stays in reach. The background matches the antd Modal theme. */
+.tax-dialog .tax-modal-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-bottom: 2px;
+  background: #111827;
 }
 
 .tax-import-area {
@@ -1102,6 +1465,7 @@ object.tax-document-preview {
   .tax-group-summary,
   .tax-group-chevron,
   .tax-month,
+  .tax-month-tip,
   .tax-field :is(input, select, textarea) {
     transition: none;
   }

@@ -2,7 +2,8 @@
 
 import { Button, Select } from 'antd';
 import { PlusOutlined, RightOutlined } from '@ant-design/icons';
-import { FileUp } from 'lucide-react';
+import { CalendarDays, FileUp } from 'lucide-react';
+import { incomeKey } from '@/lib/tax/monthly';
 import { incomeLabels, type IncomeEntry, type TaxPlan } from '@/lib/tax/schema';
 import { Empty, ListGroup, ListRow, Section, months, usd } from './controls';
 
@@ -26,6 +27,8 @@ export default function IncomeList({
   onForecast,
   onEdit,
   onDelete,
+  onMonths,
+  onEditMonth,
 }: {
   plan: TaxPlan;
   month: number;
@@ -35,13 +38,16 @@ export default function IncomeList({
   onForecast: () => void;
   onEdit: (entry: IncomeEntry) => void;
   onDelete: (entry: IncomeEntry) => void;
+  onMonths: (key: string) => void;
+  onEditMonth: () => void;
 }) {
   // One group per payer and income type, so twelve monthly paychecks read as one employer.
+  // A single month also lists the full-year totals that cover it.
   const groups = [
     ...plan.income
-      .filter((r) => month < 0 || r.month === month)
+      .filter((r) => month < 0 || r.month === month || (month > 0 && r.month === 0))
       .reduce((map, r) => {
-        const key = `${r.owner}|${r.kind}|${r.source.trim().toLowerCase()}`;
+        const key = incomeKey(r);
         const group = map.get(key) ?? { key, source: r.source, kind: r.kind, owner: r.owner, entries: [] };
         group.entries.push(r);
         return map.set(key, group);
@@ -68,6 +74,7 @@ export default function IncomeList({
       saving={saving}
       onEdit={() => onEdit(r)}
       onDelete={() => onDelete(r)}
+      onMonths={grouped ? undefined : () => onMonths(incomeKey(r))}
     />
   );
 
@@ -85,6 +92,9 @@ export default function IncomeList({
             onChange={onMonth}
             options={[{ value: -1, label: 'All periods' }, ...months.map((m, i) => ({ value: i, label: m }))]}
           />
+          <Button shape="round" icon={<CalendarDays size={15} />} onClick={onEditMonth}>
+            {month > 0 ? `Edit ${months[month]}` : 'Edit by Month'}
+          </Button>
           <Button shape="round" icon={<PlusOutlined />} onClick={onForecast}>
             Add Forecast
           </Button>
@@ -110,6 +120,7 @@ export default function IncomeList({
                     ...(sum(g.entries, 'expenses') ? [`${usd(sum(g.entries, 'expenses'))} expenses`] : []),
                   ]}
                   value={usd(gross(g.entries), 2)}
+                  onMonths={() => onMonths(g.key)}
                 >
                   {g.entries.map((r) => row(r, true))}
                 </ListGroup>
@@ -139,7 +150,7 @@ export function PlanAhead({ year, onNextYear }: { year: number; onNextYear?: () 
     <Section
       id="tax-next-year-title"
       title={onNextYear ? `Planning ${year + 1}` : 'Planning Ahead'}
-      footnote="Add a forecast for each month you expect to be paid; Repeat Monthly Through fills several months at once. A payer’s full-year total and its monthly entries can’t overlap."
+      footnote="Use Edit by Month, or the calendar button on a payer, to enter each month’s amount and mark it projected or actual. A payer’s full-year total and its monthly entries can’t overlap."
     >
       {onNextYear && (
         <Button shape="round" onClick={onNextYear}>

@@ -1,6 +1,7 @@
 import { deductibleShare, type IncomeEntry, type RentalScenario, type TaxPlan, type TaxScenario } from './schema';
 import { taxRules } from './rules';
 import type { TaxPortfolio } from './portfolio';
+import { averageRate, byMonth, monthResult, type MonthTotals } from './monthly';
 
 const positive = (n: number) => Math.max(0, n);
 export const roundMoney = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -278,6 +279,38 @@ export function calculateTax(plan: TaxPlan, portfolio: TaxPortfolio, options: Ca
   };
 }
 export type TaxCalculation = ReturnType<typeof calculateTax>;
+/**
+ * Each calendar month's income (actual and projected), business expenses and result, as the month view
+ * shows it. Full-year entries count as an even twelfth; tax uses the estimate's average federal + state rate.
+ */
+export function monthlySummary(plan: TaxPlan, estimate: TaxCalculation) {
+  const sum = (m: MonthTotals) => m.actual + m.projected;
+  const income = byMonth(plan.income, (r) => r.amount);
+  const business = byMonth(
+    plan.income.filter((r) => r.kind === 'selfEmployment'),
+    (r) => r.amount,
+  );
+  const spent = byMonth(plan.expenses, (e) => e.amount);
+  const deductible = byMonth(plan.expenses, (e) => e.amount * deductibleShare(e.category));
+  const rate = averageRate(estimate);
+  const months = income.map((m, i) => {
+    const result = monthResult(sum(m), sum(spent[i]), sum(deductible[i]), rate);
+    return {
+      month: i + 1,
+      incomeActual: roundMoney(m.actual),
+      incomeProjected: roundMoney(m.projected),
+      businessIncome: roundMoney(sum(business[i])),
+      expensesActual: roundMoney(spent[i].actual),
+      expensesProjected: roundMoney(spent[i].projected),
+      income: roundMoney(result.income),
+      businessExpenses: roundMoney(result.businessExpenses),
+      net: roundMoney(result.net),
+      estimatedTax: roundMoney(result.estimatedTax),
+      afterTax: roundMoney(result.afterTax),
+    };
+  });
+  return { averageTaxRate: Math.round(rate * 10000) / 10000, months };
+}
 export function comparePlan(plan: TaxPlan, portfolio: TaxPortfolio, includeProjected = true) {
   const baseline = calculateTax(plan, portfolio, { includeProjected, includeScenarios: false });
   const planned = calculateTax(plan, portfolio, { includeProjected });
