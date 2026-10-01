@@ -261,3 +261,38 @@ test('business expenses lower 1099 profit and self-employment tax; meals count a
   const recordedOnly = calculateTax(withExpenses, emptyPortfolio(), { includeProjected: false });
   close(recordedOnly.businessExpenses, 2_500, 'the projected monitor is left out');
 });
+
+test('QBI deduction is 20% of 1099 profit after half of SE tax, capped at 20% of taxable income', () => {
+  const halfSeTax = (50_000 * 0.9235 * 0.153) / 2;
+  const qbi = 50_000 - halfSeTax;
+  const capped = calculateTax(plan([income('selfEmployment', 50_000)]), emptyPortfolio());
+  close(capped.qualifiedBusinessIncome, qbi);
+  // Taxable income before QBI (34,367.61 − 16,100) is under QBI, so its 20% is the ceiling.
+  close(capped.qbiDeduction, 0.2 * (qbi - 16_100));
+  close(capped.taxableIncome, (qbi - 16_100) * 0.8);
+  assert.ok(capped.qbiEstimated);
+
+  const full = calculateTax(plan([income('w2', 60_000), income('selfEmployment', 50_000)]), emptyPortfolio());
+  close(full.qbiDeduction, 0.2 * full.qualifiedBusinessIncome);
+});
+
+test('QBI deduction phases out above the threshold, keeping the $400 minimum from 2026', () => {
+  const entries = () => [income('w2', 200_000), income('selfEmployment', 20_000)];
+  const inRange = calculateTax(plan(entries()), emptyPortfolio());
+  const beforeQbi = inRange.agi - 16_100;
+  // Service-business rate with no payroll or property: the remaining share applies twice.
+  const share = 1 - (beforeQbi - 201_750) / 75_000;
+  close(inRange.qbiDeduction, 0.2 * inRange.qualifiedBusinessIncome * share * share);
+
+  const above = () => [income('w2', 400_000), income('selfEmployment', 20_000)];
+  close(calculateTax(plan(above()), emptyPortfolio()).qbiDeduction, 400);
+  close(calculateTax(plan(above(), {}, [], 2025), emptyPortfolio()).qbiDeduction, 0);
+});
+
+test('a reviewed QBI amount in Plan settings replaces the estimate, still under the ceiling', () => {
+  const entered = calculateTax(plan([income('selfEmployment', 50_000)], { qbiDeduction: 1_000 }), emptyPortfolio());
+  close(entered.qbiDeduction, 1_000);
+  assert.equal(entered.qbiEstimated, false);
+  const capped = calculateTax(plan([income('selfEmployment', 50_000)], { qbiDeduction: 50_000 }), emptyPortfolio());
+  close(capped.qbiDeduction, 0.2 * (capped.agi - 16_100));
+});

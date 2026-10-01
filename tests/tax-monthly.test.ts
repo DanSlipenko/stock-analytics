@@ -1,7 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { calculateTax, monthlySummary } from '@/lib/tax/calculate';
-import { businessByMonth, byMonth, defaultStatus, fromGrid, monthResult, splitEvenly, toGrid } from '@/lib/tax/monthly';
+import {
+  businessByMonth,
+  byMonth,
+  defaultStatus,
+  fromGrid,
+  monthResult,
+  qbiByMonth,
+  splitEvenly,
+  toGrid,
+} from '@/lib/tax/monthly';
 import { emptyPortfolio } from '@/lib/tax/portfolio';
 import { applyMutation, emptyPlan, type ExpenseEntry, type IncomeEntry } from '@/lib/tax/schema';
 
@@ -22,6 +31,9 @@ function income(kind: IncomeEntry['kind'], amount: number, extra: Partial<Income
     ...extra,
   };
 }
+
+const income1099 = (amount: number, month: number, status: IncomeEntry['status'] = 'actual') =>
+  income('selfEmployment', amount, { month, status });
 
 function expense(amount: number, extra: Partial<ExpenseEntry> = {}): ExpenseEntry {
   nextId += 1;
@@ -64,6 +76,19 @@ test('business months pair 1099 income with listed and attached expenses, leavin
     income: { actual: 2_400, projected: 0 },
     expenses: { actual: 300, projected: 50 },
   });
+});
+
+test('the QBI deduction is split by monthly business profit, with loss months taking none', () => {
+  const entries = [
+    income1099(3_000, 1),
+    income1099(1_000, 2),
+    income1099(500, 3),
+    income1099(2_000, 4, 'projected'),
+  ];
+  const expenses = [expense(1_000, { month: 3 })];
+  assert.deepEqual(qbiByMonth(entries, expenses, 600).slice(0, 4), [300, 100, 0, 200]);
+  assert.deepEqual(qbiByMonth(entries, expenses, 400, false).slice(0, 4), [300, 100, 0, 0]);
+  assert.deepEqual(qbiByMonth([], [], 0), Array(12).fill(0));
 });
 
 test('an even split adds back up to the total', () => {
@@ -173,4 +198,8 @@ test('the monthly summary MCP reads matches the month view result', () => {
   assert.equal(march.net, expected.net);
   assert.equal(march.estimatedTax, Math.round(expected.estimatedTax * 100) / 100);
   assert.ok(averageTaxRate > 0);
+  // March is the only business month, so it carries the whole QBI deduction, as the chart shades it.
+  assert.ok(estimate.qbiDeduction > 0);
+  assert.equal(march.qbiDeduction, Math.round(estimate.qbiDeduction * 100) / 100);
+  assert.equal(months.filter((m) => m.qbiDeduction).length, 1);
 });

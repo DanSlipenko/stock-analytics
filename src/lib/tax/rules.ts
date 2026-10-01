@@ -12,6 +12,7 @@ export const TAX_SOURCES = [
   { label: 'Capital gains and losses', url: 'https://www.irs.gov/taxtopics/tc409' },
   { label: 'Rental property and passive losses', url: 'https://www.irs.gov/publications/p527' },
   { label: 'Self-employment tax', url: 'https://www.irs.gov/taxtopics/tc554' },
+  { label: 'Qualified business income deduction', url: 'https://www.irs.gov/newsroom/qualified-business-income-deduction' },
   { label: 'Net investment income tax', url: 'https://www.irs.gov/taxtopics/tc559' },
   { label: 'Additional Medicare tax', url: 'https://www.irs.gov/taxtopics/tc560' },
   { label: 'Social Security wage bases', url: 'https://www.ssa.gov/oact/cola/cbb.html' },
@@ -45,6 +46,11 @@ const capital = {
   2025: { single: [48350, 533400], joint: [96700, 600050], separate: [48350, 300000], head: [64750, 566700] },
   2026: { single: [49450, 545500], joint: [98900, 613700], separate: [49450, 306850], head: [66200, 579600] },
 };
+// Section 199A: the threshold and the top of its phase-in range (OBBBA widens the range from 2026).
+const qbi = {
+  2025: { single: [197300, 247300], joint: [394600, 494600], separate: [197300, 247300], head: [197300, 247300] },
+  2026: { single: [201750, 276750], joint: [403500, 553500], separate: [201775, 276775], head: [201750, 276750] },
+};
 export function taxRules(year: number, status: FilingStatus) {
   const ruleYear = year === 2025 ? 2025 : 2026;
   return {
@@ -54,6 +60,9 @@ export function taxRules(year: number, status: FilingStatus) {
     limits: limits[ruleYear][status],
     standardDeduction: deductions[ruleYear][status],
     capitalLimits: capital[ruleYear][status],
+    qbiLimits: qbi[ruleYear][status],
+    // From 2026, at least $1,000 of QBI earns a deduction of at least $400.
+    qbiMinimum: ruleYear === 2025 ? 0 : 400,
     socialSecurityBase: ruleYear === 2025 ? 176100 : 184500,
     surtaxThreshold: status === 'joint' ? 250000 : status === 'separate' ? 125000 : 200000,
   };

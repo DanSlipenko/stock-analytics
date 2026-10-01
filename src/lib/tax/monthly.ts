@@ -38,6 +38,23 @@ export function businessByMonth(income: IncomeEntry[], expenses: ExpenseEntry[])
   }));
 }
 
+/** The year's QBI deduction split across months by business profit; months at a loss take none. */
+export function qbiByMonth(
+  income: IncomeEntry[],
+  expenses: ExpenseEntry[],
+  deduction: number,
+  includeProjected = true,
+) {
+  const profit = businessByMonth(income, expenses).map((m) =>
+    Math.max(
+      0,
+      m.income.actual - m.expenses.actual + (includeProjected ? m.income.projected - m.expenses.projected : 0),
+    ),
+  );
+  const total = profit.reduce((sum, p) => sum + p, 0);
+  return profit.map((p) => (total ? (deduction * p) / total : 0));
+}
+
 /** The year's average federal + state rate: total tax ÷ AGI. */
 export const averageRate = (estimate: { agi: number; totalTax: number }) =>
   estimate.agi > 0 ? estimate.totalTax / estimate.agi : 0;

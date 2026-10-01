@@ -27,6 +27,9 @@ function summarize({ baseline, planned, savings, cashCost }: ReturnType<typeof c
     agi: roundMoney(planned.agi),
     businessIncome: roundMoney(planned.businessIncome),
     businessExpenses: roundMoney(planned.businessExpenses),
+    qualifiedBusinessIncome: roundMoney(planned.qualifiedBusinessIncome),
+    qbiDeduction: roundMoney(planned.qbiDeduction),
+    qbiEstimated: planned.qbiEstimated,
     taxableIncome: roundMoney(planned.taxableIncome),
     marginalRate: planned.marginalRate,
     effectiveRate: Math.round(planned.effectiveRate * 10000) / 10000,
@@ -58,8 +61,10 @@ export function registerTaxTools(server: McpServer) {
       title: 'Get tax plan and estimate',
       description:
         'Read income, business expenses, scenarios, settings, linked stock sales, open holdings and baseline/planned tax estimates. Call before writes to obtain the current revision and entry IDs. ' +
-        "monthly lists each calendar month as the app's month view shows it: income (actual and projected), 1099 business income, business expenses (actual and projected), net, " +
+        "monthly lists each calendar month as the app's month view shows it: income (actual and projected), 1099 business income, business expenses (actual and projected), " +
+        "the month's share of the QBI deduction (split by business profit; loss months take none), net, " +
         "estimated tax at the year's average federal + state rate (total tax ÷ AGI) on income less deductible expenses, and after-tax. Full-year (month 0) entries count as an even twelfth of each month. " +
+        'The QBI deduction is estimated from 1099 profit (qbiEstimated: true) unless profile.qbiDeduction holds a reviewed amount. ' +
         'Years 2025–2027; 2027 uses provisional 2026 rules. Amounts are USD. No mutation.',
       inputSchema: z.object({ year: taxYearSchema }),
       annotations: { readOnlyHint: true },
@@ -82,6 +87,7 @@ export function registerTaxTools(server: McpServer) {
         'To change one month of a full-year total, replace it in a single save: send all twelve monthly entries (an even split, with the changed month edited) and remove the full-year ID. ' +
         "The entries action saves income and expense changes together, e.g. one month's figures: income/removeIncome and expenses/removeExpenses. " +
         'profile merges: send only the settings to change. W-2 amount is box 1; withholding is box 2 only. Self-employment (1099-NEC) amount is gross receipts. ' +
+        'Leave profile.qbiDeduction at 0 so the planner estimates the QBI deduction; set it only to an amount the user has reviewed, and 0 restores the estimate. ' +
         'Record business costs with the expenses action (upsert by ID, same month/status fields; amount is what was spent, meals are deducted at 50%) ' +
         'rather than the income entry expenses field, and never both. Nonqualified dividends exclude qualified dividends. Reported short/long gains replace portfolio totals ' +
         '(set profile.stockSource="reported" first); never record both. Rental purchases are scenarios, not full purchase-price deductions. ' +
@@ -134,7 +140,7 @@ export function registerTaxTools(server: McpServer) {
         return {
           plan,
           summary: summarize(estimate),
-          monthly: monthlySummary(plan, estimate.planned),
+          monthly: monthlySummary(plan, estimate.planned, includeProjected),
           estimate,
           sources: TAX_SOURCES,
         };

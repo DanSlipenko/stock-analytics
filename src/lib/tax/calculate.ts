@@ -1,7 +1,7 @@
 import { deductibleShare, type IncomeEntry, type RentalScenario, type TaxPlan, type TaxScenario } from './schema';
 import { taxRules } from './rules';
 import type { TaxPortfolio } from './portfolio';
-import { averageRate, byMonth, monthResult, type MonthTotals } from './monthly';
+import { averageRate, byMonth, monthResult, qbiByMonth, type MonthTotals } from './monthly';
 
 const positive = (n: number) => Math.max(0, n);
 export const roundMoney = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -27,6 +27,22 @@ export function netCapital(shortTerm: number, longTerm: number, separate: boolea
     lossDeduction,
     lossCarryforward: positive(-total - lossDeduction),
   };
+}
+/**
+ * Section 199A deduction from the year's qualified business income. Assumes no W-2 payroll or business
+ * property, so above the threshold it phases out, at the stricter specified-service-business rate.
+ */
+export function qbiDeduction(
+  qbi: number,
+  taxableBeforeQbi: number,
+  netCapitalGain: number,
+  [threshold, top]: number[],
+  minimum: number,
+) {
+  if (qbi <= 0) return 0;
+  const share = 1 - Math.min(1, positive(taxableBeforeQbi - threshold) / (top - threshold));
+  const deduction = Math.min(0.2 * qbi * share * share, 0.2 * positive(taxableBeforeQbi - netCapitalGain));
+  return qbi >= 1000 ? Math.max(deduction, minimum) : deduction;
 }
 export function rentalDetails(scenario: RentalScenario) {
   const buildingBasis = scenario.purchasePrice * (1 - scenario.landPercent / 100);
@@ -113,7 +129,8 @@ export function calculateTax(plan: TaxPlan, portfolio: TaxPortfolio, options: Ca
     businessIncome = 0,
     businessExpenses = 0,
     businessProfit = 0,
-    businessScenarioDeduction = 0;
+    businessScenarioDeduction = 0,
+    qualifiedBusinessIncome = 0;
   for (const owner of ['taxpayer', 'spouse'] as const) {
     const owned = entries.filter((r) => r.owner === owner);
     const wageBase = owned
@@ -136,10 +153,14 @@ export function calculateTax(plan: TaxPlan, portfolio: TaxPortfolio, options: Ca
     businessScenarioDeduction += allowed;
     businessProfit += profit - allowed;
     const earnings = positive(profit - allowed) * 0.9235;
-    if (earnings >= 400) {
-      seEarnings += earnings;
-      seTax += Math.min(earnings, positive(rules.socialSecurityBase - wageBase)) * 0.124 + earnings * 0.029;
-    }
+    const ownerSeTax =
+      earnings >= 400
+        ? Math.min(earnings, positive(rules.socialSecurityBase - wageBase)) * 0.124 + earnings * 0.029
+        : 0;
+    if (ownerSeTax) seEarnings += earnings;
+    seTax += ownerSeTax;
+    // QBI is the business's profit less the deductible half of its SE tax.
+    qualifiedBusinessIncome += profit - allowed - ownerSeTax / 2;
     if (profit < 0)
       warnings.push(
         'Business losses are included before basis, at-risk, excess business loss and NOL limits. Review eligibility.',
@@ -185,8 +206,12 @@ export function calculateTax(plan: TaxPlan, portfolio: TaxPortfolio, options: Ca
   const deduction = usesItemized ? itemized : rules.standardDeduction;
   const beforeQbi = positive(agi - deduction);
   const preferentialIncome = capital.preferential + qualifiedDividends;
-  const qbiDeduction = Math.min(profile.qbiDeduction, positive(beforeQbi - preferentialIncome) * 0.2);
-  const taxableIncome = positive(beforeQbi - qbiDeduction);
+  // A reviewed amount in Plan settings replaces the estimate; the taxable-income ceiling applies to both.
+  const qbiEstimated = !profile.qbiDeduction;
+  const qbi = qbiEstimated
+    ? qbiDeduction(qualifiedBusinessIncome, beforeQbi, preferentialIncome, rules.qbiLimits, rules.qbiMinimum)
+    : Math.min(profile.qbiDeduction, positive(beforeQbi - preferentialIncome) * 0.2);
+  const taxableIncome = positive(beforeQbi - qbi);
   const taxablePreferential = Math.min(taxableIncome, preferentialIncome);
   const ordinaryTaxable = positive(taxableIncome - taxablePreferential);
   const brackets = progressiveTax(ordinaryTaxable, rules.limits, rules.rates);
@@ -217,9 +242,9 @@ export function calculateTax(plan: TaxPlan, portfolio: TaxPortfolio, options: Ca
     warnings.push(
       'Business expenses are deducted in the year paid and must be ordinary and necessary for your 1099 work. Meals count at 50%; equipment is assumed fully expensed (Section 179). Enter home office and vehicle costs after applying the IRS simplified or actual-expense method.',
     );
-  if (businessProfit > 0 && !profile.qbiDeduction)
+  if (qbiEstimated && qualifiedBusinessIncome > 0)
     warnings.push(
-      'QBI deduction is not automatically calculated. Enter an eligible deduction in Plan settings after checking business and income limits.',
+      'QBI deduction is estimated as 20% of 1099 profit after half of self-employment tax, capped at 20% of taxable income less capital gains. Self-employed health insurance, retirement contributions and QBI loss carryforwards are not subtracted. Above the income threshold it phases out as for a service business with no W-2 payroll or property. Enter a reviewed amount in Plan settings to replace it.',
     );
   if (rental.rows.length)
     warnings.push(
@@ -250,7 +275,9 @@ export function calculateTax(plan: TaxPlan, portfolio: TaxPortfolio, options: Ca
     deduction,
     usesItemized,
     itemizedReduction,
-    qbiDeduction,
+    qualifiedBusinessIncome,
+    qbiDeduction: qbi,
+    qbiEstimated,
     taxableIncome,
     ordinaryTaxable,
     taxablePreferential,
@@ -282,8 +309,9 @@ export type TaxCalculation = ReturnType<typeof calculateTax>;
 /**
  * Each calendar month's income (actual and projected), business expenses and result, as the month view
  * shows it. Full-year entries count as an even twelfth; tax uses the estimate's average federal + state rate.
+ * Each month's QBI deduction is its share of the year's, by business profit, as the income chart shades it.
  */
-export function monthlySummary(plan: TaxPlan, estimate: TaxCalculation) {
+export function monthlySummary(plan: TaxPlan, estimate: TaxCalculation, includeProjected = true) {
   const sum = (m: MonthTotals) => m.actual + m.projected;
   const income = byMonth(plan.income, (r) => r.amount);
   const business = byMonth(
@@ -293,6 +321,7 @@ export function monthlySummary(plan: TaxPlan, estimate: TaxCalculation) {
   const spent = byMonth(plan.expenses, (e) => e.amount);
   const deductible = byMonth(plan.expenses, (e) => e.amount * deductibleShare(e.category));
   const rate = averageRate(estimate);
+  const qbi = qbiByMonth(plan.income, plan.expenses, estimate.qbiDeduction, includeProjected);
   const months = income.map((m, i) => {
     const result = monthResult(sum(m), sum(spent[i]), sum(deductible[i]), rate);
     return {
@@ -304,6 +333,7 @@ export function monthlySummary(plan: TaxPlan, estimate: TaxCalculation) {
       expensesProjected: roundMoney(spent[i].projected),
       income: roundMoney(result.income),
       businessExpenses: roundMoney(result.businessExpenses),
+      qbiDeduction: roundMoney(qbi[i]),
       net: roundMoney(result.net),
       estimatedTax: roundMoney(result.estimatedTax),
       afterTax: roundMoney(result.afterTax),

@@ -145,7 +145,7 @@ export default function ProfileEditor({
             {money(
               'qbiDeduction',
               'Eligible QBI Deduction',
-              'Enter the reviewed amount; the taxable-income ceiling is applied.',
+              'Leave at $0 to estimate it from 1099 profit, or enter a reviewed amount. The taxable-income ceiling applies.',
             )}
             {money(
               'credits',

@@ -145,7 +145,7 @@ export default function Overview({
   return (
     <>
       {plan.income.length ? (
-        <Forecast plan={plan} onMonth={onMonth} />
+        <Forecast plan={plan} qbi={estimate.qbiDeduction} includeProjected={includeProjected} onMonth={onMonth} />
       ) : (
         <section className="campaigns-section" aria-label="Add income">
           <div className="campaigns-panel">

@@ -137,7 +137,7 @@ export const profileSchema = z
     adjustments: dollars.describe('Eligible adjustments to income, e.g. deductible IRA or HSA contributions.'),
     itemizedDeductions: dollars,
     forceItemized: z.boolean(),
-    qbiDeduction: dollars,
+    qbiDeduction: dollars.describe('Reviewed QBI deduction; 0 = estimate it from 1099 profit.'),
     credits: dollars.describe('Nonrefundable federal credits.'),
     estimatedPayments: dollars.describe('Federal estimated tax payments already made.'),
     additionalMedicareWithheld: dollars,
