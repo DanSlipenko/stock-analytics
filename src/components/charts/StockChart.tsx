@@ -5,7 +5,7 @@ import { Skeleton } from 'antd';
 import { StockCandle } from '@/types';
 import { attachChartComparison, type ChartComparison } from './chartComparison';
 import TimeRangeFilter from './TimeRangeFilter';
-import { TIME_RANGES, type TimeRange } from './timeRanges';
+import { TIME_RANGES, candleRangeEnd, startOfUtcDay, type TimeRange } from './timeRanges';
 
 export { TIME_RANGES, type TimeRange } from './timeRanges';
 
@@ -278,13 +278,14 @@ export default function StockChart({ symbol, height = 400, hideToolbar = false, 
     setLoading(true);
     setNoData(false);
 
-    const now = Math.floor(Date.now() / 1000);
+    // Day-aligned so the same chart produces the same URL all day and caches.
+    const to = candleRangeEnd();
     const rangeConfig = TIME_RANGES.find((r) => r.key === range)!;
-    const from = now - rangeConfig.seconds;
+    const from = startOfUtcDay(Math.floor(Date.now() / 1000) - rangeConfig.seconds);
 
     try {
       const res = await fetch(
-        `/api/stock/candles?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${now}`,
+        `/api/stock/candles?symbol=${encodeURIComponent(symbol)}&resolution=D&from=${from}&to=${to}`,
         { signal },
       );
 

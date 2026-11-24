@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { onRefresh } from "@/lib/refresh";
+import { candleRangeEnd } from "@/components/charts/timeRanges";
 import { toDayKey, type DailyClose, type HistoryRequest, type PerformanceWindow, type Resolution } from "@/lib/campaignPerformance";
 
 type CacheEntry = { closes: DailyClose[]; fetchedAt: number };
@@ -46,7 +47,8 @@ async function fetchCloses(request: HistoryRequest, resolution: Resolution, forc
     if (pending) return pending;
   }
 
-  const to = Math.floor(Date.now() / 1000);
+  // Day-aligned rather than "now", so repeat requests hit the server cache.
+  const to = candleRangeEnd();
   const url = `/api/stock/candles?symbol=${encodeURIComponent(request.symbol)}&resolution=${resolution}&from=${request.from}&to=${to}`;
   // On a manual refresh, tell the route to skip its upstream revalidate window.
   const init: RequestInit = force ? { headers: { "x-refresh": "1" }, cache: "no-store" } : {};

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
 
+// Upstream calls time out after 5s. This caps the whole request, including Next"s
+// background cache revalidation, which runs without that timeout.
+export const maxDuration = 15;
+
 const CURATED_CRYPTO = [
   { description: "Bitcoin USD", displaySymbol: "BTC-USD", symbol: "BINANCE:BTCUSDT", type: "Cryptocurrency" },
   { description: "Ethereum USD", displaySymbol: "ETH-USD", symbol: "BINANCE:ETHUSDT", type: "Cryptocurrency" },
@@ -92,6 +96,7 @@ async function canUseManualResult(query: string) {
       {
         headers: { "User-Agent": "Mozilla/5.0" },
         next: { revalidate: 300 },
+        signal: AbortSignal.timeout(5000),
       }
     );
 
@@ -132,6 +137,7 @@ export async function GET(request: NextRequest) {
   try {
     const res = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${FINNHUB_KEY}`, {
       next: { revalidate: 300 },
+      signal: AbortSignal.timeout(5000),
     });
 
     if (!res.ok) {

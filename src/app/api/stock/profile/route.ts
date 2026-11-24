@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
 
+// Upstream calls time out after 5s. This caps the whole request, including Next's
+// background cache revalidation, which runs without that timeout.
+export const maxDuration = 15;
+
 const MOCK_PROFILES: Record<string, object> = {
   AAPL: { name: 'Apple Inc', ticker: 'AAPL', logo: '', industry: 'Technology', marketCapitalization: 3000000, weburl: 'https://apple.com', country: 'US', exchange: 'NASDAQ', finnhubIndustry: 'Technology' },
   MSFT: { name: 'Microsoft Corporation', ticker: 'MSFT', logo: '', industry: 'Technology', marketCapitalization: 2800000, weburl: 'https://microsoft.com', country: 'US', exchange: 'NASDAQ', finnhubIndustry: 'Technology' },
@@ -38,7 +42,7 @@ export async function GET(request: NextRequest) {
   try {
     const res = await fetch(
       `https://finnhub.io/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_KEY}`,
-      { next: { revalidate: 3600 } }
+      { next: { revalidate: 3600 }, signal: AbortSignal.timeout(5000) }
     );
 
     if (!res.ok) {

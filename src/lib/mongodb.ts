@@ -38,6 +38,9 @@ async function dbConnect(): Promise<typeof mongoose> {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
+      // Fail fast when the cluster can't be reached. The driver's default 30s wait
+      // keeps the function open, and billed, for every request that hits it.
+      serverSelectionTimeoutMS: 5000,
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongooseInstance) => {

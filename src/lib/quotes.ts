@@ -2,6 +2,17 @@ import { StockQuote } from '@/types';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
 
+/** Upstreams answer in well under a second. A call that hangs would otherwise
+ * hold the function open — and billed — until Vercel's 300s limit. */
+const UPSTREAM_TIMEOUT_MS = 5000;
+
+/** Parallel upstream calls per batch; stays inside Finnhub's per-second limit. */
+const BATCH_CONCURRENCY = 8;
+
+function withTimeout(init: RequestInit): RequestInit {
+  return { ...init, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) };
+}
+
 type YahooQuotePoint = {
   open?: Array<number | null>;
   high?: Array<number | null>;
@@ -35,10 +46,10 @@ function findLastValidPriceIndex(values?: Array<number | null>) {
 async function fetchYahooQuote(symbol: string, cacheInit: RequestInit): Promise<StockQuote | null> {
   const res = await fetch(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`,
-    {
+    withTimeout({
       headers: { 'User-Agent': 'Mozilla/5.0' },
       ...cacheInit,
-    }
+    })
   );
 
   if (!res.ok) {
@@ -88,7 +99,7 @@ async function fetchYahooQuote(symbol: string, cacheInit: RequestInit): Promise<
 async function fetchBinanceQuote(symbol: string, cacheInit: RequestInit): Promise<StockQuote | null> {
   const cryptoSymbol = symbol.replace('BINANCE:', '');
   try {
-    const res = await fetch(`https://api.binance.us/api/v3/ticker/24hr?symbol=${cryptoSymbol}`, cacheInit);
+    const res = await fetch(`https://api.binance.us/api/v3/ticker/24hr?symbol=${cryptoSymbol}`, withTimeout(cacheInit));
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -133,17 +144,17 @@ export async function getQuote(symbol: string, { refresh = false } = {}): Promis
   try {
     const res = await fetch(
       `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_KEY}`,
-      cacheInit
+      withTimeout(cacheInit)
     );
 
     if (!res.ok) {
-      return fetchYahooQuote(symbol, cacheInit);
+      return await fetchYahooQuote(symbol, cacheInit);
     }
 
     const data = await res.json();
 
     if (!Number.isFinite(data.c) || data.c <= 0 || !data.t) {
-      return fetchYahooQuote(symbol, cacheInit);
+      return await fetchYahooQuote(symbol, cacheInit);
     }
 
     return {
@@ -163,11 +174,27 @@ export async function getQuote(symbol: string, { refresh = false } = {}): Promis
 }
 
 /** Best-effort batch lookup; symbols that fail to price are omitted. */
-export async function getQuotes(symbols: string[]): Promise<Record<string, StockQuote>> {
+export async function getQuotes(
+  symbols: string[],
+  { refresh = false } = {}
+): Promise<Record<string, StockQuote>> {
   const unique = Array.from(new Set(symbols));
-  const entries = await Promise.all(
-    unique.map(async (symbol) => [symbol, await getQuote(symbol)] as const)
-  );
+  const quotes: Record<string, StockQuote> = {};
+  let next = 0;
 
-  return Object.fromEntries(entries.filter(([, quote]) => quote !== null)) as Record<string, StockQuote>;
+  const worker = async () => {
+    while (next < unique.length) {
+      const symbol = unique[next++];
+      try {
+        const quote = await getQuote(symbol, { refresh });
+        if (quote) quotes[symbol] = quote;
+      } catch (error) {
+        // One bad symbol must not sink the rest of the batch.
+        console.error(`Quote fetch error for ${symbol}:`, error);
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(BATCH_CONCURRENCY, unique.length) }, worker));
+  return quotes;
 }

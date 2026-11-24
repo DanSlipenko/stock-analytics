@@ -4,7 +4,7 @@
  * handler deletes every cache that doesn't carry the current version.
  */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const SHELL_CACHE = `stockpulse-shell-${CACHE_VERSION}`;
 const STATIC_CACHE = `stockpulse-static-${CACHE_VERSION}`;
 const PAGES_CACHE = `stockpulse-pages-${CACHE_VERSION}`;

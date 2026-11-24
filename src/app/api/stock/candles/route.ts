@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
 
+// Upstream calls time out after 5s. This caps the whole request, including Next's
+// background cache revalidation, which runs without that timeout.
+export const maxDuration = 15;
+
+const UPSTREAM_TIMEOUT_MS = 5000;
+
 /**
  * Upstream cache policy for one request.
  *
@@ -10,9 +16,10 @@ const FINNHUB_KEY = process.env.FINNHUB_API_KEY;
  * back a response that may be up to `revalidate` seconds old.
  */
 function upstreamCache(request: NextRequest, revalidate: number): RequestInit {
+  const signal = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
   return request.headers.get('x-refresh') === '1'
-    ? { cache: 'no-store' }
-    : { next: { revalidate } };
+    ? { cache: 'no-store', signal }
+    : { next: { revalidate }, signal };
 }
 
 export async function GET(request: NextRequest) {
